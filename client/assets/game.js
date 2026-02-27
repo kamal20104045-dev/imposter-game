@@ -17,6 +17,7 @@ const gameState = {
     timeLimit: 30,
     votingTimeLimit: 20,
     playersSubmittedThisRound: new Set(),
+    latestWord: '',
     gameMode: null // 'local' or 'online'
 };
 
@@ -91,6 +92,14 @@ function initSocket(mode) {
     gameState.socket.on('player-left', (data) => {
         gameState.players = data.players;
         updatePlayersList();
+        // If we are in a game and our owner status changed, show message
+        if (gameState.gameStarted && !gameState.isOwner) {
+            const nowOwner = gameState.players.find(p => p.isOwner);
+            if (nowOwner && nowOwner.id === gameState.playerId) {
+                showError('You are now the room owner');
+                gameState.isOwner = true;
+            }
+        }
     });
 
     gameState.socket.on('settings-updated', (settings) => {
@@ -104,41 +113,39 @@ function initSocket(mode) {
         gameState.currentTurnPlayerId = data.currentTurn;
         gameState.timeLimit = data.timeLimit;
         gameState.playersSubmittedThisRound = new Set();
-        showScreen('game-screen');
-        displayYourRole();
-        updateGameDisplay();
-        startTurnTimer(data.timeLimit);
-    });
+        gameState.latestWord = '';
+         showScreen('game-screen');
+         displayYourRole();
+         updateGameDisplay();
+         startTurnTimer(data.timeLimit);
+     });
 
-    gameState.socket.on('role-assigned', (data) => {
-        gameState.currentRole = data.role;
-        displayYourRole();
-    });
+     gameState.socket.on('word-submitted', (data) => {
+         // data: { submittedById, submittedBy, word (or null), nextTurn, playersLeft }
+         const submitterName = data.submittedBy;
+         const submitterId = data.submittedById;
+         if (data.word) {
+             // Non-imposters receive the actual word
+             console.log(`${submitterName} submitted: ${data.word}`);
+             gameState.latestWord = data.word;
+             document.getElementById('latest-word').textContent = data.word;
+         } else {
+             // Imposters will receive a null word
+             console.log(`${submitterName} submitted a word (hidden from you)`);
+         }
+         gameState.playersSubmittedThisRound.add(submitterId);
+         gameState.currentTurnPlayerId = data.nextTurn;
+         updateGameDisplay();
+         if (data.playersLeft > 0) {
+             startTurnTimer(gameState.timeLimit);
+         }
+     });
 
-    gameState.socket.on('turn-updated', (data) => {
-        gameState.currentTurnPlayerId = data.currentTurn;
-        updateGameDisplay();
-        if (data.playersLeft > 0) startTurnTimer(gameState.timeLimit);
-    });
-
-    gameState.socket.on('word-submitted', (data) => {
-        // data: { submittedById, submittedBy, word (or null), nextTurn, playersLeft }
-        const submitterName = data.submittedBy;
-        const submitterId = data.submittedById;
-        if (data.word) {
-            // Non-imposters receive the actual word
-            console.log(`${submitterName} submitted: ${data.word}`);
-        } else {
-            // Imposters will receive a null word
-            console.log(`${submitterName} submitted a word (hidden from you)`);
-        }
-        gameState.playersSubmittedThisRound.add(submitterId);
-        gameState.currentTurnPlayerId = data.nextTurn;
-        updateGameDisplay();
-        if (data.playersLeft > 0) {
-            startTurnTimer(gameState.timeLimit);
-        }
-    });
+     gameState.socket.on('turn-updated', (data) => {
+         gameState.currentTurnPlayerId = data.currentTurn;
+         updateGameDisplay();
+         if (data.playersLeft > 0) startTurnTimer(gameState.timeLimit);
+     });
 
     gameState.socket.on('voting-phase-started', (data) => {
         gameState.inVotingPhase = true;
@@ -633,6 +640,14 @@ window.addEventListener('click', (e) => {
     const modal = document.getElementById('how-to-play-modal');
     if (e.target === modal) {
         modal.classList.add('hidden');
+    }
+});
+
+// Warn before leaving or reloading during an active game
+window.addEventListener('beforeunload', (e) => {
+    if (gameState.gameStarted) {
+        e.preventDefault();
+        e.returnValue = 'You are in a game. Are you sure you want to leave?';
     }
 });
 

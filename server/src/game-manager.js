@@ -27,7 +27,7 @@ class GameManager {
     
     if (!room) return null;
     if (room.players.size >= room.settings.maxPlayers) return null;
-    if (room.gameStarted) return null;
+    // allow joining even if gameStarted; new players will participate starting next round
 
     room.addPlayer(playerId, playerName);
     this.playerToRoom.set(playerId, room.id);
