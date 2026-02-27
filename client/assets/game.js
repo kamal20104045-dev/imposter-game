@@ -110,9 +110,29 @@ function initSocket(mode) {
         startTurnTimer(data.timeLimit);
     });
 
+    gameState.socket.on('role-assigned', (data) => {
+        gameState.currentRole = data.role;
+        displayYourRole();
+    });
+
+    gameState.socket.on('turn-updated', (data) => {
+        gameState.currentTurnPlayerId = data.currentTurn;
+        updateGameDisplay();
+        if (data.playersLeft > 0) startTurnTimer(gameState.timeLimit);
+    });
+
     gameState.socket.on('word-submitted', (data) => {
-        console.log(`${data.submittedBy} submitted: ${data.word}`);
-        gameState.playersSubmittedThisRound.add(data.submittedBy);
+        // data: { submittedById, submittedBy, word (or null), nextTurn, playersLeft }
+        const submitterName = data.submittedBy;
+        const submitterId = data.submittedById;
+        if (data.word) {
+            // Non-imposters receive the actual word
+            console.log(`${submitterName} submitted: ${data.word}`);
+        } else {
+            // Imposters will receive a null word
+            console.log(`${submitterName} submitted a word (hidden from you)`);
+        }
+        gameState.playersSubmittedThisRound.add(submitterId);
         gameState.currentTurnPlayerId = data.nextTurn;
         updateGameDisplay();
         if (data.playersLeft > 0) {
@@ -133,6 +153,28 @@ function initSocket(mode) {
 
     gameState.socket.on('game-over', (data) => {
         showGameOver(data.finalResults);
+    });
+
+    gameState.socket.on('room-closed', (data) => {
+        showError(data.message || 'Room closed');
+        // disconnect and return to landing after short delay
+        setTimeout(() => {
+            if (gameState.socket) gameState.socket.disconnect();
+            resetLocalGameState();
+            showScreen('landing-screen');
+        }, 1500);
+    });
+
+    gameState.socket.on('room-reset', (data) => {
+        // show lobby and clear game-specific UI so owner can start fresh
+        gameState.gameStarted = false;
+        gameState.currentRound = 1;
+        gameState.currentTurnPlayerId = null;
+        gameState.playersSubmittedThisRound = new Set();
+        gameState.inVotingPhase = false;
+        gameState.players = data.players || gameState.players;
+        updatePlayersList();
+        showScreen('lobby-screen');
     });
 
     gameState.socket.on('game-error', (data) => {
@@ -591,7 +633,7 @@ function updatePlayersStatus() {
         if (player.id === gameState.currentTurnPlayerId) {
             badge = 'waiting';
             badgeText = 'Current Turn';
-        } else if (gameState.playersSubmittedThisRound.has(player.name)) {
+        } else if (gameState.playersSubmittedThisRound.has(player.id)) {
             badge = 'submitted';
             badgeText = 'Submitted';
         }
@@ -603,6 +645,25 @@ function updatePlayersStatus() {
             </div>
         `;
     }).join('');
+}
+
+// Reset local UI/game state (preserve socket disconnected behavior separately)
+function resetLocalGameState() {
+    gameState.roomId = null;
+    gameState.roomCode = null;
+    gameState.isOwner = false;
+    gameState.currentRole = null;
+    gameState.gameStarted = false;
+    gameState.currentRound = 1;
+    gameState.totalRounds = 3;
+    gameState.currentTurnPlayerId = null;
+    gameState.currentTurnPlayerName = null;
+    gameState.inVotingPhase = false;
+    gameState.playersSubmittedThisRound = new Set();
+    gameState.players = [];
+    // clear UI timers
+    clearInterval(turnTimerInterval);
+    clearInterval(votingTimerInterval);
 }
 
 // Initialize

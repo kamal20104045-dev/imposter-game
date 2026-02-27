@@ -27,6 +27,11 @@ class GameRoom {
     this.VOTING_TIME_LIMIT = 20; // seconds
     this.turnTimer = null;
     this.votingTimer = null;
+    this.notifier = null; // function(event, data)
+  }
+
+  setNotifier(fn) {
+    this.notifier = fn;
   }
 
   addPlayer(playerId, playerName) {
@@ -101,6 +106,7 @@ class GameRoom {
       // Randomly select first player
       this.currentTurnPlayerId = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
       this.startTurnTimer();
+      if (this.notifier) this.notifier('turn-updated', { currentTurn: this.currentTurnPlayerId, playersLeft: this.getRemainingPlayersThisRound().length });
     }
   }
 
@@ -136,6 +142,7 @@ class GameRoom {
     if (remainingPlayers.length > 0) {
       this.currentTurnPlayerId = remainingPlayers[0];
       this.startTurnTimer();
+      if (this.notifier) this.notifier('turn-updated', { currentTurn: this.currentTurnPlayerId, playersLeft: remainingPlayers.length });
     } else {
       this.endRound();
     }
@@ -144,6 +151,7 @@ class GameRoom {
   endRound() {
     this.inVotingPhase = true;
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    if (this.notifier) this.notifier('voting-started', { players: this.getPlayers(), timeLimit: this.VOTING_TIME_LIMIT });
   }
 
   getRemainingPlayersThisRound() {
@@ -222,6 +230,43 @@ class GameRoom {
     if (this.currentRound <= this.settings.roundCount) {
       this.startRound();
     }
+  }
+
+  // Reset game-specific state but keep players in the room (useful for restarting)
+  resetGame() {
+    this.gameStarted = false;
+    this.inVotingPhase = false;
+    this.currentRound = 0;
+    this.currentTurnPlayerId = null;
+    this.wordsThisRound = new Map();
+    this.playersWhoSubmitted = new Set();
+    this.votes = new Map();
+    this.eliminations = [];
+    this.lastResults = null;
+    // clear timers
+    if (this.turnTimer) {
+      clearTimeout(this.turnTimer);
+      this.turnTimer = null;
+    }
+    if (this.votingTimer) {
+      clearTimeout(this.votingTimer);
+      this.votingTimer = null;
+    }
+    // reset roles and alive status so a fresh game can be started
+    for (const [id, pdata] of this.players.entries()) {
+      pdata.role = null;
+      pdata.alive = true;
+    }
+  }
+
+  // Full reset in preparation for room deletion
+  reset() {
+    this.resetGame();
+    this.players.clear();
+    this.ownerId = null;
+    this.code = null;
+    this.id = null;
+    this.notifier = null;
   }
 
   getFinalResults() {

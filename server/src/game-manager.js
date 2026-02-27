@@ -54,6 +54,10 @@ class GameManager {
   }
 
   deleteRoom(roomId) {
+    const room = this.rooms.get(roomId);
+    if (room && typeof room.reset === 'function') {
+      room.reset();
+    }
     this.rooms.delete(roomId);
   }
 

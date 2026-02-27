@@ -45,6 +45,16 @@ io.on('connection', (socket) => {
     const room = gameManager.joinRoom(socket.id, playerName, roomCode);
     
     if (room) {
+      // ensure room notifier is set so server can broadcast turn/voting updates
+      if (typeof room.setNotifier === 'function') {
+        room.setNotifier((event, payload) => {
+          if (event === 'turn-updated') {
+            io.to(room.id).emit('turn-updated', payload);
+          } else if (event === 'voting-started') {
+            io.to(room.id).emit('voting-phase-started', payload);
+          }
+        });
+      }
       socket.join(room.id);
       io.to(room.id).emit('player-joined', {
         players: room.getPlayers(),
@@ -65,7 +75,16 @@ io.on('connection', (socket) => {
     const { playerName } = data;
     const room = gameManager.createRoom(socket.id, playerName);
     socket.join(room.id);
-    
+    // set notifier so GameRoom can inform about turn/voting changes
+    if (typeof room.setNotifier === 'function') {
+      room.setNotifier((event, payload) => {
+        if (event === 'turn-updated') {
+          io.to(room.id).emit('turn-updated', payload);
+        } else if (event === 'voting-started') {
+          io.to(room.id).emit('voting-phase-started', payload);
+        }
+      });
+    }
     socket.emit('room-created', {
       roomId: room.id,
       roomCode: room.code,
@@ -99,6 +118,10 @@ io.on('connection', (socket) => {
       }
       
       room.startGame();
+      // send role assignment privately to each player
+      for (const [pid, pdata] of room.players.entries()) {
+        io.to(pid).emit('role-assigned', { role: pdata.role });
+      }
       io.to(room.id).emit('game-started', {
         roundNumber: room.currentRound,
         totalRounds: room.settings.roundCount,
@@ -114,14 +137,17 @@ io.on('connection', (socket) => {
     if (room && room.gameStarted && room.currentTurnPlayerId === socket.id) {
       const { word } = data;
       room.submitWord(socket.id, word);
-      
-      // Notify all players about word submission
-      io.to(room.id).emit('word-submitted', {
-        submittedBy: gameManager.getPlayerName(socket.id),
-        word: word,
-        nextTurn: room.currentTurnPlayerId,
-        playersLeft: room.getRemainingPlayersThisRound().length
-      });
+      // Notify each player: hide the word from imposters
+      for (const [pid, pdata] of room.players.entries()) {
+        const isImposter = pdata.role === 'imposter';
+        io.to(pid).emit('word-submitted', {
+          submittedById: socket.id,
+          submittedBy: gameManager.getPlayerName(socket.id),
+          word: isImposter ? null : word,
+          nextTurn: room.currentTurnPlayerId,
+          playersLeft: room.getRemainingPlayersThisRound().length
+        });
+      }
 
       // Check if round is complete
       if (room.getRemainingPlayersThisRound().length === 0) {
@@ -172,6 +198,29 @@ io.on('connection', (socket) => {
         }
       }
     }
+  });
+
+  // Owner can reset the game state (prepare for a fresh game)
+  socket.on('reset-game', () => {
+    const room = gameManager.getRoomByPlayerId(socket.id);
+    if (!room) return;
+    if (room.ownerId !== socket.id) return;
+    room.resetGame();
+    io.to(room.id).emit('room-reset', { players: room.getPlayers(), settings: room.getSettings() });
+  });
+
+  // Owner can close the room entirely
+  socket.on('close-room', () => {
+    const room = gameManager.getRoomByPlayerId(socket.id);
+    if (!room) return;
+    if (room.ownerId !== socket.id) return;
+    // notify remaining players and then delete room
+    io.to(room.id).emit('room-closed', { message: 'Room has been closed by the owner.' });
+    // remove players' mappings
+    for (const pid of Array.from(room.players.keys())) {
+      gameManager.removePlayerFromRoom(pid);
+    }
+    gameManager.deleteRoom(room.id);
   });
 
   // Disconnect

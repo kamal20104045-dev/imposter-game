@@ -12,6 +12,66 @@ body {
     justify-content: center;
     align-items: center;
     padding: 10px;
+/* Responsive adjustments for small devices */
+@media (max-width: 600px) {
+    .container {
+        padding: 8px;
+        max-width: 100%;
+    }
+
+    .landing-title {
+        font-size: 32px;
+    }
+
+    .mode-selection {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .content-card, .mode-card {
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: none;
+    }
+
+    .mode-icon {
+        font-size: 40px;
+    }
+
+    .title {
+        font-size: 28px;
+    }
+
+    .header {
+        padding: 10px;
+    }
+
+    #role-badge {
+        font-size: 12px;
+        padding: 4px 8px;
+    }
+
+    .room-code-display {
+        font-size: 18px;
+    }
+
+    .btn-back, .btn-copy, .btn-icon {
+        padding: 6px 8px;
+        font-size: 14px;
+    }
+}
+
+/* Make interactive elements larger and easier to tap on small screens */
+button, input[type="text"], input[type="number"] {
+    touch-action: manipulation;
+}
+
+/* Reduce heavy shadows on tiny devices to improve contrast and performance */
+@media (max-width: 420px) {
+    .mode-card, .content-card {
+        box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    }
+}
 }
 
 .container {
