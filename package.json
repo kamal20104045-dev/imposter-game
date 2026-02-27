@@ -4,8 +4,7 @@
   "author": "Your Name",
   "license": "MIT",
   "scripts": {
-    "start": "cd server && npm start",
-    "postinstall": "cd server && npm install"
+    "start": "cd server && npm start"
   },
   "repository": {
     "type": "git",
