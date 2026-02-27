@@ -140,10 +140,11 @@ io.on('connection', (socket) => {
       // Notify each player: hide the word from imposters
       for (const [pid, pdata] of room.players.entries()) {
         const isImposter = pdata.role === 'imposter';
+        const hideWord = isImposter || pid === socket.id;
         io.to(pid).emit('word-submitted', {
           submittedById: socket.id,
           submittedBy: gameManager.getPlayerName(socket.id),
-          word: isImposter ? null : word,
+          word: hideWord ? null : word,
           nextTurn: room.currentTurnPlayerId,
           playersLeft: room.getRemainingPlayersThisRound().length
         });
