@@ -153,6 +153,7 @@ io.on('connection', (socket) => {
       if (room.getRemainingPlayersThisRound().length === 0) {
         io.to(room.id).emit('voting-phase-started', {
           players: room.getPlayers(),
+          voters: room.getVotersForCurrentRound(),
           timeLimit: room.VOTING_TIME_LIMIT
         });
       }

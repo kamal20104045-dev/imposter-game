@@ -143,7 +143,9 @@ function initSocket(mode) {
     gameState.socket.on('voting-phase-started', (data) => {
         gameState.inVotingPhase = true;
         gameState.players = data.players;
-        showVotingPhase(data.players, data.timeLimit);
+        // store eligible voters (array of ids) if provided
+        gameState.eligibleVoters = data.voters || gameState.players.filter(p => p.alive).map(p => p.id);
+        showVotingPhase(data.players, data.timeLimit, gameState.eligibleVoters);
         startVotingTimer(data.timeLimit);
     });
 
@@ -316,6 +318,22 @@ function updatePlayersList() {
     updateStartButtonState();
 }
 
+// Update the in-game players list (shows during gameplay)
+function updateInGamePlayersList() {
+    const el = document.getElementById('in-game-players-list');
+    if (!el) return;
+    el.innerHTML = gameState.players.map(player => `
+        <div class="player-item">
+            <span class="player-name">${player.name}</span>
+            <div>
+                ${player.isOwner ? '<span class="player-badge owner">👑</span>' : ''}
+                ${!player.alive ? '<span class="player-badge eliminated">💀</span>' : ''}
+                ${player.id === gameState.currentTurnPlayerId ? '<span class="player-badge turn">▶️</span>' : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
 // Update Start Button State
 function updateStartButtonState() {
     const startBtn = document.getElementById('start-game-btn');
@@ -411,6 +429,7 @@ function updateGameDisplay() {
 
     // Update player status display
     updatePlayersStatus();
+    updateInGamePlayersList();
 }
 
 // Word Submission
@@ -486,11 +505,21 @@ function showVotingPhase(players, timeLimit) {
     const alivePlayers = players.filter(p => p.alive);
     const votingEl = document.getElementById('voting-options');
     
-    votingEl.innerHTML = alivePlayers.map(player => `
-        <button class="vote-btn" onclick="submitVote('${player.id}', this)">
-            ${player.name}
-        </button>
-    `).join('');
+    // If eligibleVoters provided, only show vote buttons for those players
+    const eligible = gameState.eligibleVoters || alivePlayers.map(p => p.id);
+
+    votingEl.innerHTML = alivePlayers.map(player => {
+        if (!eligible.includes(player.id)) {
+            return `
+                <div class="vote-btn disabled">${player.name} (not voting)</div>
+            `;
+        }
+        return `
+            <button class="vote-btn" onclick="submitVote('${player.id}', this)">
+                ${player.name}
+            </button>
+        `;
+    }).join('');
 }
 
 let selectedVote = null;

@@ -28,6 +28,7 @@ class GameRoom {
     this.turnTimer = null;
     this.votingTimer = null;
     this.notifier = null; // function(event, data)
+    this.lastSubmitter = null;
   }
 
   setNotifier(fn) {
@@ -121,6 +122,7 @@ class GameRoom {
     if (this.currentTurnPlayerId === playerId && !this.playersWhoSubmitted.has(playerId)) {
       this.wordsThisRound.set(playerId, word);
       this.playersWhoSubmitted.add(playerId);
+      this.lastSubmitter = playerId;
       this.nextTurn();
     }
   }
@@ -160,6 +162,18 @@ class GameRoom {
       .map(([id]) => id);
     
     return alivePlayers.filter(id => !this.playersWhoSubmitted.has(id));
+  }
+
+  // Voters for the current round: exclude the player who last submitted (they know the word)
+  getVotersForCurrentRound() {
+    const alivePlayers = Array.from(this.players.entries())
+      .filter(([, data]) => data.alive)
+      .map(([id]) => id);
+
+    if (this.lastSubmitter) {
+      return alivePlayers.filter(id => id !== this.lastSubmitter);
+    }
+    return alivePlayers;
   }
 
   submitVote(playerId, votedPlayerId) {
