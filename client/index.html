@@ -196,10 +196,19 @@
         <!-- Game Screen -->
         <div id="game-screen" class="screen">
             <div class="header">
+                <div class="room-info">
+                    <div class="room-label">Room:</div>
+                    <div class="room-code-container">
+                        <span id="room-code-game" class="room-code-display"></span>
+                        <button id="copy-code-btn-game" class="btn-copy" title="Copy room code">📋</button>
+                        <span id="copy-notification-game" class="copy-notification"></span>
+                    </div>
+                </div>
                 <div class="game-info">
                     <div class="round-info">
                         Round <span id="current-round">1</span> / <span id="total-rounds">3</span>
                     </div>
+                    <div id="latest-word" class="latest-word">&nbsp;</div>
                     <div id="your-role-display" class="role-display">
                         <span id="role-badge"></span>
                     </div>
@@ -209,6 +218,8 @@
 
             <div class="content-card">
                 <h3>Players in Game</h3>
+                <!-- show the most recently submitted word and who entered it -->
+                <div id="now-word-display" class="now-word-display"></div>
                 <div id="in-game-players-list" class="players-list"></div>
                 <!-- Turn Phase -->
                 <div id="turn-phase" class="phase">
@@ -227,6 +238,7 @@
                             >
                         </div>
                         <button id="submit-word-btn" class="btn btn-primary">Submit Word</button>
+                        <button id="next-player-btn" class="btn btn-secondary" style="margin-left:10px;">Next Player</button>
                     </div>
 
                     <div id="waiting-turn" class="hidden">

@@ -114,7 +114,12 @@ function initSocket(mode) {
         gameState.timeLimit = data.timeLimit;
         gameState.playersSubmittedThisRound = new Set();
         gameState.latestWord = '';
-         showScreen('game-screen');
+        // clear display for new round
+        const latestWordEl = document.getElementById('latest-word');
+        if (latestWordEl) latestWordEl.textContent = '';
+        const nowWordEl = document.getElementById('now-word-display');
+        if (nowWordEl) nowWordEl.textContent = '';
+        showScreen('game-screen');
          displayYourRole();
          updateGameDisplay();
          startTurnTimer(data.timeLimit);
@@ -127,8 +132,11 @@ function initSocket(mode) {
          if (data.word) {
              // Non-imposters receive the actual word
              console.log(`${submitterName} submitted: ${data.word}`);
-             gameState.latestWord = data.word;
-             document.getElementById('latest-word').textContent = data.word;
+            gameState.latestWord = data.word;
+            const display = `${data.word} (by ${submitterName})`;
+            document.getElementById('latest-word').textContent = display;
+            const nowEl = document.getElementById('now-word-display');
+            if (nowEl) nowEl.textContent = display;
          } else {
              // Imposters will receive a null word
              console.log(`${submitterName} submitted a word (hidden from you)`);
@@ -272,8 +280,11 @@ function showError(message) {
 // Update Room Display
 function updateRoomDisplay() {
     document.getElementById('room-code-display').textContent = gameState.roomCode;
+    const gameCodeEl = document.getElementById('room-code-game');
+    if (gameCodeEl) gameCodeEl.textContent = gameState.roomCode;
     updatePlayersList();
     setupCopyButton();
+    setupCopyButton('game');
     
     if (gameState.isOwner) {
         document.getElementById('owner-controls').classList.remove('hidden');
@@ -284,21 +295,24 @@ function updateRoomDisplay() {
     }
 }
 
-// Copy Room Code
-function setupCopyButton() {
-    const copyBtn = document.getElementById('copy-code-btn');
+// Copy Room Code (supports lobby and game screen)
+function setupCopyButton(screen) {
+    const id = screen === 'game' ? 'copy-code-btn-game' : 'copy-code-btn';
+    const copyBtn = document.getElementById(id);
+    if (!copyBtn) return;
     copyBtn.addEventListener('click', () => {
         const code = gameState.roomCode;
         navigator.clipboard.writeText(code).then(() => {
-            showCopyNotification();
+            showCopyNotification(screen === 'game' ? 'copy-notification-game' : 'copy-notification');
         }).catch(() => {
             showError('Failed to copy room code');
         });
     });
 }
 
-function showCopyNotification() {
-    const notification = document.getElementById('copy-notification');
+function showCopyNotification(id = 'copy-notification') {
+    const notification = document.getElementById(id);
+    if (!notification) return;
     notification.textContent = '✓ Copied!';
     notification.classList.add('show');
     setTimeout(() => {
@@ -427,6 +441,9 @@ function updateGameDisplay() {
         waitingTurn.classList.add('hidden');
         yourTurn.classList.add('active');
         waitingTurn.classList.remove('active');
+        // enable the manual next‑player button
+        const nextBtn = document.getElementById('next-player-btn');
+        if (nextBtn) nextBtn.disabled = false;
     } else {
         yourTurn.classList.add('hidden');
         waitingTurn.classList.remove('hidden');
@@ -448,7 +465,20 @@ document.getElementById('submit-word-btn').addEventListener('click', () => {
     }
     gameState.socket.emit('submit-word', { word });
     document.getElementById('word-input').value = '';
+    // after submitting we can disable the next button to prevent
+    // accidentally advancing twice
+    const nextBtn = document.getElementById('next-player-btn');
+    if (nextBtn) nextBtn.disabled = true;
 });
+
+// Next player manual advance
+const nextBtn = document.getElementById('next-player-btn');
+if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+        gameState.socket.emit('next-turn');
+        nextBtn.disabled = true;
+    });
+}
 
 // Timers
 let turnTimerInterval;

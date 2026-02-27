@@ -65,6 +65,19 @@ io.on('connection', (socket) => {
         roomCode: room.code,
         isOwner: room.ownerId === socket.id
       });
+        // if the game is already underway, let the newcomer know the
+        // current state so their UI can switch straight to the game screen
+        if (room.gameStarted) {
+          // their role has already been set by addPlayer above
+          const playerData = room.players.get(socket.id) || {};
+          socket.emit('role-assigned', { role: playerData.role || 'normal' });
+          socket.emit('game-started', {
+            roundNumber: room.currentRound,
+            totalRounds: room.settings.roundCount,
+            currentTurn: room.currentTurnPlayerId,
+            timeLimit: room.TURN_TIME_LIMIT
+          });
+        }
     } else {
       socket.emit('join-error', { message: 'Invalid room code' });
     }
@@ -158,6 +171,19 @@ io.on('connection', (socket) => {
           timeLimit: room.VOTING_TIME_LIMIT
         });
       }
+    }
+  });
+
+  // Manual advance to next turn (triggered by current player)
+  socket.on('next-turn', () => {
+    const room = gameManager.getRoomByPlayerId(socket.id);
+    if (room && room.gameStarted && room.currentTurnPlayerId === socket.id) {
+      // skip current player's turn
+      room.skipTurn();
+      io.to(room.id).emit('turn-updated', {
+        currentTurn: room.currentTurnPlayerId,
+        playersLeft: room.getRemainingPlayersThisRound().length
+      });
     }
   });
 
