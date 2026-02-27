@@ -215,7 +215,9 @@ document.getElementById('create-room-btn').addEventListener('click', () => {
 });
 
 document.getElementById('join-room-btn').addEventListener('click', () => {
-    const name = document.getElementById('player-name-input').value.trim();
+    // Prefer the join-specific name input if provided, otherwise use the main name input
+    const joinNameEl = document.getElementById('join-player-name-input');
+    const name = (joinNameEl && joinNameEl.value.trim()) || document.getElementById('player-name-input').value.trim();
     const code = document.getElementById('room-code-input').value.trim().toUpperCase();
     
     if (!name) {
