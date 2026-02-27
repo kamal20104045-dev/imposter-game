@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finding the Imposter</title>
+    <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+    <div id="app" class="container">
+        <!-- Landing Page -->
+        <div id="landing-screen" class="screen active">
+            <div class="landing-content">
+                <div class="landing-header">
+                    <h1 class="landing-title">🕵️ Finding the Imposter</h1>
+                    <p class="landing-subtitle">A multiplayer party game for friends</p>
+                </div>
+
+                <div class="mode-selection">
+                    <div class="mode-card" onclick="selectMode('local')">
+                        <div class="mode-icon">📱</div>
+                        <h2>Play Local</h2>
+                        <p>Play with friends on the same Wi-Fi network</p>
+                        <div class="mode-features">
+                            <div class="feature">✓ Local LAN</div>
+                            <div class="feature">✓ No Account</div>
+                            <div class="feature">✓ Private Rooms</div>
+                        </div>
+                        <button class="btn btn-primary mode-btn">Play Local</button>
+                    </div>
+
+                    <div class="mode-card" onclick="selectMode('online')">
+                        <div class="mode-icon">🌐</div>
+                        <h2>Play Online</h2>
+                        <p>Connect with players worldwide using room codes</p>
+                        <div class="mode-features">
+                            <div class="feature">✓ Internet Play</div>
+                            <div class="feature">✓ Any Location</div>
+                            <div class="feature">✓ Private Rooms</div>
+                        </div>
+                        <button class="btn btn-primary mode-btn">Play Online</button>
+                    </div>
+                </div>
+
+                <div class="landing-footer">
+                    <p>Created with ❤️ for friends and parties</p>
+                </div>
+            </div>
+        </div>
+        <!-- How to Play Modal -->
+        <div id="how-to-play-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>How to Play 🎮</h2>
+                    <button class="modal-close" onclick="closeHowToPlay()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="rule-section">
+                        <h3>🕵️ The Roles</h3>
+                        <p><strong>Normal Players:</strong> Know the secret word, try to identify the imposter</p>
+                        <p><strong>Imposter:</strong> Don't know the word, try to fake knowing it</p>
+                    </div>
+                    <div class="rule-section">
+                        <h3>📝 The Turn Phase (30 sec)</h3>
+                        <p>Each player takes turns entering a word. Players must decide if it's related to the secret word or if it's the imposter guessing.</p>
+                    </div>
+                    <div class="rule-section">
+                        <h3>🗳️ The Voting Phase (20 sec)</h3>
+                        <p>Everyone votes for who they think is the imposter. The player with the most votes is eliminated.</p>
+                    </div>
+                    <div class="rule-section">
+                        <h3>🏆 Winning</h3>
+                        <p><strong>Normal Players Win:</strong> All imposters are eliminated</p>
+                        <p><strong>Imposters Win:</strong> Survive all rounds</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Join/Create Screen -->
+        <div id="join-screen" class="screen">
+            <div class="content-card">
+                <div class="back-button-container">
+                    <button id="back-to-landing-btn" class="btn-back" onclick="backToLanding()">← Back</button>
+                </div>
+                <div class="title-section">
+                    <h1 class="title">🕵️ Finding the Imposter</h1>
+                    <button id="how-to-play-btn" class="btn-icon" title="How to Play">ℹ️</button>
+                </div>
+                <p class="subtitle">A multiplayer party game</p>
+                
+                <div class="form-group">
+                    <input 
+                        type="text" 
+                        id="player-name-input" 
+                        placeholder="Enter your name"
+                        class="input"
+                        maxlength="20"
+                    >
+                </div>
+
+                <button id="create-room-btn" class="btn btn-primary">
+                    Create Room
+                </button>
+
+                <div class="divider">OR</div>
+
+                <div class="form-group">
+                    <input 
+                        type="text" 
+                        id="room-code-input" 
+                        placeholder="Room Code (e.g., ABC123)"
+                        class="input"
+                        maxlength="6"
+                        style="text-transform: uppercase;"
+                    >
+                </div>
+
+                <button id="join-room-btn" class="btn btn-secondary">
+                    Join Room
+                </button>
+
+                <div id="error-message" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="screen">
+            <div class="header">
+                <div class="room-info">
+                    <div class="room-label">Room Code:</div>
+                    <div class="room-code-container">
+                        <span id="room-code-display" class="room-code-display"></span>
+                        <button id="copy-code-btn" class="btn-copy" title="Copy room code">📋</button>
+                        <span id="copy-notification" class="copy-notification"></span>
+                    </div>
+                </div>
+                <button id="leave-room-btn" class="btn btn-small">Leave</button>
+            </div>
+
+            <div class="content-card">
+                <h3>Players (<span id="player-count">0</span>)</h3>
+                <div id="players-list" class="players-list"></div>
+
+                <div id="owner-controls" class="owner-controls hidden">
+                    <h3>Room Settings</h3>
+                    
+                    <div class="setting-group">
+                        <label>Max Players:</label>
+                        <div class="number-input">
+                            <button id="max-players-minus" class="btn-small">-</button>
+                            <input type="number" id="max-players" min="2" max="16" value="8">
+                            <button id="max-players-plus" class="btn-small">+</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label>Imposters:</label>
+                        <div class="number-input">
+                            <button id="imposters-minus" class="btn-small">-</button>
+                            <input type="number" id="imposters-count" min="1" max="5" value="2">
+                            <button id="imposters-plus" class="btn-small">+</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label>Rounds:</label>
+                        <div class="number-input">
+                            <button id="rounds-minus" class="btn-small">-</button>
+                            <input type="number" id="rounds-count" min="1" max="10" value="3">
+                            <button id="rounds-plus" class="btn-small">+</button>
+                        </div>
+                    </div>
+
+                    <button id="start-game-btn" class="btn btn-primary" style="width: 100%; margin-top: 20px;">
+                        Start Game
+                    </button>
+                </div>
+
+                <div id="waiting-message" class="waiting-message">
+                    ⏳ Waiting for room owner to start the game...
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen">
+            <div class="header">
+                <div class="game-info">
+                    <div class="round-info">
+                        Round <span id="current-round">1</span> / <span id="total-rounds">3</span>
+                    </div>
+                    <div id="your-role-display" class="role-display">
+                        <span id="role-badge"></span>
+                    </div>
+                </div>
+                <button id="exit-game-btn" class="btn btn-small btn-danger">Exit Game</button>
+            </div>
+
+            <div class="content-card">
+                <!-- Turn Phase -->
+                <div id="turn-phase" class="phase">
+                    <h3 id="turn-status">Turn: <span id="current-turn-player">Player</span></h3>
+                    <div class="timer" id="turn-timer">30</div>
+
+                    <div id="your-turn" class="hidden">
+                        <p>It's your turn! Enter a word:</p>
+                        <div class="form-group">
+                            <input 
+                                type="text" 
+                                id="word-input" 
+                                placeholder="Enter a word"
+                                class="input"
+                                maxlength="20"
+                            >
+                        </div>
+                        <button id="submit-word-btn" class="btn btn-primary">Submit Word</button>
+                    </div>
+
+                    <div id="waiting-turn" class="hidden">
+                        <p id="waiting-text">Waiting for current player...</p>
+                        <div class="players-status" id="players-status"></div>
+                        <div class="players-taking-turns" id="players-left"></div>
+                    </div>
+                </div>
+
+                <!-- Voting Phase -->
+                <div id="voting-phase" class="phase hidden">
+                    <h3>Voting Phase</h3>
+                    <p>Vote for who you think is the imposter:</p>
+                    <div class="timer" id="voting-timer">20</div>
+                    <div id="voting-options" class="voting-options"></div>
+                </div>
+
+                <!-- Results Phase -->
+                <div id="results-phase" class="phase hidden">
+                    <h3>Round Results</h3>
+                    <div id="results-content"></div>
+                    <p class="waiting-message" style="margin-top: 20px;">Loading next round...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen">
+            <div class="content-card">
+                <h2 id="game-result-title">Game Over!</h2>
+                <div id="game-result-content"></div>
+                <button id="return-to-lobby-btn" class="btn btn-primary">
+                    Return to Lobby
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // If you deploy the backend separately, set this to the deployed backend URL.
+        // Example: window.BACKEND_URL = 'https://imposter-backend.onrender.com';
+        // Leave empty to use the same origin as the frontend.
+        window.BACKEND_URL = "";
+    </script>
+    <script src="assets/game.js"></script>
+</body>
+</html>

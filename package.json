@@ -1,0 +1,10 @@
+{
+  "name": "Finding the Imposter",
+  "description": "A real-time multiplayer web game",
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/imposter-game"
+  }
+}
