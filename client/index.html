@@ -38,44 +38,7 @@
             </div>
         </div>
 
-        <!-- Join/Create Screen -->
-        <div id="join-screen" class="screen">
-            <div class="content-card">
-                <div class="back-button-container">
-                    <button id="back-to-landing-btn" class="btn-back" onclick="backToLanding()">← Back</button>
-                </div>
-                <div class="title-section">
-        </div>
-        <!-- How to Play Modal -->
-        <div id="how-to-play-modal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>How to Play 🎮</h2>
-                    <button class="modal-close" onclick="closeHowToPlay()">✕</button>
-                </div>
-                <div class="modal-body">
-                    <div class="rule-section">
-                        <h3>🕵️ The Roles</h3>
-                        <p><strong>Normal Players:</strong> Know the secret word, try to identify the imposter</p>
-                        <p><strong>Imposter:</strong> Don't know the word, try to fake knowing it</p>
-                    </div>
-                    <div class="rule-section">
-                        <h3>📝 The Turn Phase (30 sec)</h3>
-                        <p>Each player takes turns entering a word. Players must decide if it's related to the secret word or if it's the imposter guessing.</p>
-                    </div>
-                    <div class="rule-section">
-                        <h3>🗳️ The Voting Phase (20 sec)</h3>
-                        <p>Everyone votes for who they think is the imposter. The player with the most votes is eliminated.</p>
-                    </div>
-                    <div class="rule-section">
-                        <h3>🏆 Winning</h3>
-                        <p><strong>Normal Players Win:</strong> All imposters are eliminated</p>
-                        <p><strong>Imposters Win:</strong> Survive all rounds</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+        
         <!-- Join/Create Screen -->
         <div id="join-screen" class="screen">
             <div class="content-card">
@@ -194,39 +157,36 @@
 
         <!-- Game Screen -->
         <div id="game-screen" class="screen">
+            <!-- Top Banners -->
+            <div id="word-entering-banner" class="top-banner word-entering-banner hidden">
+                ⏳ Player is entering the word...
+            </div>
+            <div id="current-player-banner" class="top-banner current-player-banner hidden">
+                🎤 Player's Turn to Speak
+            </div>
+
             <div class="header">
                 <div class="room-info">
                     <div class="room-label">Room:</div>
                     <div class="room-code-container">
                         <span id="room-code-game" class="room-code-display"></span>
                         <button id="copy-code-btn-game" class="btn-copy" title="Copy room code">📋</button>
-                        <span id="copy-notification-game" class="copy-notification"></span>
                     </div>
                 </div>
                 <div class="game-info">
                     <div class="round-info">
                         Round <span id="current-round">1</span> / <span id="total-rounds">3</span>
                     </div>
-                    <div id="latest-word" class="latest-word">&nbsp;</div>
-                    <div id="your-role-display" class="role-display">
-                        <span id="role-badge"></span>
-                    </div>
                 </div>
                 <button id="exit-game-btn" class="btn btn-small btn-danger">Exit Game</button>
             </div>
 
             <div class="content-card">
-                <h3>Players in Game</h3>
-                <!-- show the most recently submitted word and who entered it -->
-                <div id="now-word-display" class="now-word-display"></div>
-                <div id="in-game-players-list" class="players-list"></div>
-                <!-- Turn Phase -->
-                <div id="turn-phase" class="phase">
-                    <h3 id="turn-status">Turn: <span id="current-turn-player">Player</span></h3>
-                    <div class="timer" id="turn-timer">30</div>
-
-                    <div id="your-turn" class="hidden">
-                        <p>It's your turn! Enter a word:</p>
+                <!-- Word Entering Phase -->
+                <div id="word-entering-phase" class="phase">
+                    <div id="word-entering-self" class="hidden">
+                        <h3>Enter the Secret Word</h3>
+                        <p>Other players are waiting. Enter one word for them to guess:</p>
                         <div class="form-group">
                             <input 
                                 type="text" 
@@ -237,29 +197,74 @@
                             >
                         </div>
                         <button id="submit-word-btn" class="btn btn-primary">Submit Word</button>
-                        <button id="next-player-btn" class="btn btn-secondary" style="margin-left:10px;">Next Player</button>
                     </div>
 
-                    <div id="waiting-turn" class="hidden">
-                        <p id="waiting-text">Waiting for current player...</p>
-                        <div class="players-status" id="players-status"></div>
-                        <div class="players-taking-turns" id="players-left"></div>
+                    <div id="word-entering-waiting" class="hidden">
+                        <div class="waiting-banner">
+                            <p id="word-entering-player-name">Player is entering the word...</p>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Voting Phase -->
-                <div id="voting-phase" class="phase hidden">
-                    <h3>Voting Phase</h3>
-                    <p>Vote for who you think is the imposter:</p>
-                    <div class="timer" id="voting-timer">20</div>
-                    <div id="voting-options" class="voting-options"></div>
+                <!-- Waiting Phase (For word-entering player) -->
+                <div id="waiting-phase" class="phase hidden">
+                    <div class="waiting-container">
+                        <h3>Word Submitted! ✍️</h3>
+                        <p>Other players are now guessing your word.</p>
+                        <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                            Sit back and enjoy watching the game. You'll participate in the next round when it's your turn to guess!
+                        </p>
+                        <div id="waiting-game-players" class="players-list" style="margin-top: 30px;"></div>
+                    </div>
                 </div>
 
-                <!-- Results Phase -->
-                <div id="results-phase" class="phase hidden">
-                    <h3>Round Results</h3>
-                    <div id="results-content"></div>
-                    <p class="waiting-message" style="margin-top: 20px;">Loading next round...</p>
+                <!-- Guessing Phase -->
+                <div id="guessing-phase" class="phase hidden">
+                    <h3>Guessing Phase</h3>
+                    <div id="card-container" class="card-container">
+                        <!-- Role Card -->
+                        <div id="role-card" class="flip-card" onclick="flipCard('role-card')">
+                            <div class="flip-card-inner">
+                                <div class="flip-card-front">
+                                    <p>Click to reveal<br><strong>YOUR ROLE</strong></p>
+                                </div>
+                                <div class="flip-card-back" id="role-content">
+                                    <!-- Role will be inserted here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Word Card -->
+                        <div id="word-card" class="flip-card" onclick="flipCard('word-card')">
+                            <div class="flip-card-inner">
+                                <div class="flip-card-front">
+                                    <p>Click to reveal<br><strong>THE WORD</strong></p>
+                                </div>
+                                <div class="flip-card-back" id="word-content">
+                                    <!-- Word or imposter message will be inserted here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="turn-indicator" class="turn-indicator hidden">
+                        <h4 id="turn-text">🎤 Your Turn to Speak!</h4>
+                        <p style="font-size: 14px; margin: 15px 0;">Speak about the word without saying it directly.</p>
+                        <button id="pass-btn" class="btn btn-primary">✓ Pass to Next Player</button>
+                    </div>
+
+                    <div id="waiting-turn" class="waiting-turn hidden">
+                        <p id="waiting-text">Waiting for <span id="current-player-name">players</span> to speak...</p>
+                    </div>
+
+                    <h4 style="margin-top: 20px;">Players in Guessing Phase</h4>
+                    <div id="in-game-players-list" class="players-list"></div>
+                </div>
+
+                <!-- Round End Phase -->
+                <div id="round-end-phase" class="phase hidden">
+                    <h3>Round Complete ✓</h3>
+                    <p>Preparing next round...</p>
                 </div>
             </div>
         </div>
