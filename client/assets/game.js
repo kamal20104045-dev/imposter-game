@@ -618,11 +618,11 @@ function updateGuessingPhaseDisplay() {
     const passBtn = document.getElementById('pass-btn');
     const currentPlayerBanner = document.getElementById('current-player-banner');
     
-    // Update top banner showing current player's turn
+    // ALWAYS show prominent top banner indicating current player
     if (currentPlayerBanner) {
         const currentPlayer = gameState.players.find(p => p.id === gameState.currentGuessingPlayerId);
         if (currentPlayer) {
-            currentPlayerBanner.textContent = `🎤 ${currentPlayer.name}'s Turn to Speak`;
+            currentPlayerBanner.innerHTML = '<div style="text-align: center; font-size: 18px; font-weight: bold; color: #ff6b6b;">🎤 ' + currentPlayer.name + '\'s Turn to Speak</div>';
             currentPlayerBanner.classList.remove('hidden');
         }
     }

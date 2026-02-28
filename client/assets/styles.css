@@ -317,7 +317,9 @@ button, input[type="text"], input[type="number"] {
 }
 
 .current-player-banner {
-    background: linear-gradient(90deg, #4ECDC4 0%, #44A08D 100%);
+    background: linear-gradient(90deg, #ff6b6b 0%, #ff5252 100%) !important;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4) !important;
+    font-size: 18px !important;
 }
 
 /* Turn and Waiting Indicators */
