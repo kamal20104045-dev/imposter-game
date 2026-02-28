@@ -5,15 +5,18 @@ class GameRoom {
     this.id = roomId;
     this.code = roomCode;
     this.ownerId = ownerId;
-    this.players = new Map(); // playerId -> { name, role, alive }
+    this.players = new Map(); // playerId -> { name, role, alive, isWordEnteringPlayer }
     this.gameStarted = false;
-    this.inVotingPhase = false;
     this.currentRound = 0;
-    this.currentTurnPlayerId = null;
-    this.wordsThisRound = new Map(); // playerId -> word
-    this.playersWhoSubmitted = new Set();
-    this.votes = new Map(); // voterId -> votedPlayerId
-    this.eliminations = [];
+    this.totalRounds = 3;
+
+    // Current round state
+    this.secretWord = '';
+    this.wordEnteringPlayerId = null;
+    this.currentPhase = 'lobby'; // 'word-entering' | 'guessing' | 'round-end'
+    this.currentGuessingPlayerId = null; // whose turn is it
+    this.guessersThisRound = new Set(); // players who haven't guessed yet
+    this.guessersPassed = new Set(); // players who have passed their turn
 
     // Settings
     this.settings = {
@@ -23,12 +26,10 @@ class GameRoom {
     };
 
     // Timers
-    this.TURN_TIME_LIMIT = 30; // seconds
-    this.VOTING_TIME_LIMIT = 20; // seconds
-    this.turnTimer = null;
-    this.votingTimer = null;
+    this.WORD_ENTERING_TIME_LIMIT = 30; // seconds for word entry
+    this.GUESSING_TIME_LIMIT = 20; // seconds per player turn
+    this.roundTimer = null;
     this.notifier = null; // function(event, data)
-    this.lastSubmitter = null;
   }
 
   setNotifier(fn) {
@@ -36,22 +37,20 @@ class GameRoom {
   }
 
   addPlayer(playerId, playerName) {
-    // when a player joins while a game is already in progress we
-    // immediately mark them as a normal player so they are not
-    // accidentally treated as an imposter mid–round.  Their role
-    // will be re‑shuffled when the next round starts anyway.
     this.players.set(playerId, {
       name: playerName,
-      role: this.gameStarted ? 'normal' : null,
-      alive: true
+      role: null,
+      alive: true,
+      isWordEnteringPlayer: false
     });
   }
 
   removePlayer(playerId) {
     this.players.delete(playerId);
-    // If owner leaves, assign new owner
-    if (playerId === this.ownerId && this.players.size > 0) {
-      this.ownerId = this.players.keys().next().value;
+    if (this.ownerId === playerId) {
+      // Transfer ownership to first remaining player
+      const remaining = Array.from(this.players.keys())[0];
+      if (remaining) this.ownerId = remaining;
     }
   }
 
@@ -59,254 +58,172 @@ class GameRoom {
     return Array.from(this.players.entries()).map(([id, data]) => ({
       id,
       name: data.name,
+      role: data.role,
       alive: data.alive,
-      isOwner: id === this.ownerId
+      isOwner: id === this.ownerId,
+      isWordEnteringPlayer: data.isWordEnteringPlayer
     }));
   }
 
-  setSettings(maxPlayers, importerCount, roundCount) {
-    this.settings.maxPlayers = maxPlayers;
-    this.settings.importerCount = importerCount;
-    this.settings.roundCount = roundCount;
-  }
-
-  getSettings() {
-    return this.settings;
+  updateSettings(settings) {
+    this.settings = { ...this.settings, ...settings };
+    this.totalRounds = settings.roundCount || this.totalRounds;
   }
 
   startGame() {
+    if (this.players.size < 2) return false;
     this.gameStarted = true;
     this.currentRound = 1;
-    this.assignRoles();
-    this.startRound();
+    this.selectWordEnteringPlayer();
+    this.currentPhase = 'word-entering';
+    return true;
   }
 
-  assignRoles() {
+  selectWordEnteringPlayer() {
+    // Select the next player in rotation to enter the word
+    // This ensures everyone gets a turn fairly
     const playerIds = Array.from(this.players.keys());
-    const shuffled = playerIds.sort(() => Math.random() - 0.5);
     
-    // Assign importer roles
-    for (let i = 0; i < this.settings.importerCount && i < shuffled.length; i++) {
-      this.players.get(shuffled[i]).role = 'imposter';
-    }
-    
-    // Assign normal roles
-    for (let i = this.settings.importerCount; i < shuffled.length; i++) {
-      this.players.get(shuffled[i]).role = 'normal';
-    }
-  }
-
-  startRound() {
-    this.inVotingPhase = false;
-    this.wordsThisRound = new Map();
-    this.playersWhoSubmitted = new Set();
-    this.votes = new Map();
-    
-    // Get alive players for this round
-    const alivePlayers = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive)
-      .map(([id]) => id);
-    
-    if (alivePlayers.length > 0) {
-      // Randomly select first player
-      this.currentTurnPlayerId = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
-      this.startTurnTimer();
-      if (this.notifier) this.notifier('turn-updated', { currentTurn: this.currentTurnPlayerId, playersLeft: this.getRemainingPlayersThisRound().length });
-    }
-  }
-
-  startTurnTimer() {
-    if (this.turnTimer) clearTimeout(this.turnTimer);
-    this.turnTimer = setTimeout(() => {
-      this.skipTurn();
-    }, this.TURN_TIME_LIMIT * 1000);
-  }
-
-  submitWord(playerId, word) {
-    if (this.currentTurnPlayerId === playerId && !this.playersWhoSubmitted.has(playerId)) {
-      this.wordsThisRound.set(playerId, word);
-      this.playersWhoSubmitted.add(playerId);
-      this.lastSubmitter = playerId;
-      this.nextTurn();
-    }
-  }
-
-  skipTurn() {
-    if (this.currentTurnPlayerId) {
-      this.playersWhoSubmitted.add(this.currentTurnPlayerId);
-    }
-    this.nextTurn();
-  }
-
-  nextTurn() {
-    const alivePlayers = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive)
-      .map(([id]) => id);
-    
-    const remainingPlayers = alivePlayers.filter(id => !this.playersWhoSubmitted.has(id));
-    
-    if (remainingPlayers.length > 0) {
-      this.currentTurnPlayerId = remainingPlayers[0];
-      this.startTurnTimer();
-      if (this.notifier) this.notifier('turn-updated', { currentTurn: this.currentTurnPlayerId, playersLeft: remainingPlayers.length });
+    if (this.currentRound === 1) {
+      // First round: random selection
+      const randomIndex = Math.floor(Math.random() * playerIds.length);
+      this.wordEnteringPlayerId = playerIds[randomIndex];
     } else {
-      this.endRound();
+      // Subsequent rounds: rotate through players
+      // Find the current word-entering player in the list
+      const currentIndex = playerIds.indexOf(this.wordEnteringPlayerId);
+      const nextIndex = (currentIndex + 1) % playerIds.length;
+      this.wordEnteringPlayerId = playerIds[nextIndex];
     }
+
+    // Mark this player
+    this.players.forEach(p => p.isWordEnteringPlayer = false);
+    const playerData = this.players.get(this.wordEnteringPlayerId);
+    if (playerData) playerData.isWordEnteringPlayer = true;
+  }
+
+  submitWord(wordEnteringPlayerId, word) {
+    if (wordEnteringPlayerId !== this.wordEnteringPlayerId) return false;
+    this.secretWord = word;
+
+    // Assign roles to all OTHER players
+    this.assignRolesToGuessers();
+
+    // Prepare guessing phase
+    const guessers = Array.from(this.players.keys()).filter(
+      id => id !== this.wordEnteringPlayerId
+    );
+    this.guessersThisRound = new Set(guessers);
+    this.guessersPassed = new Set();
+
+    // Start guessing with first guesser
+    if (guessers.length > 0) {
+      this.currentGuessingPlayerId = guessers[0];
+      this.currentPhase = 'guessing';
+    }
+
+    return true;
+  }
+
+  assignRolesToGuessers() {
+    // Only assign roles to non-word-entering players
+    const guessers = Array.from(this.players.keys()).filter(
+      id => id !== this.wordEnteringPlayerId
+    );
+
+    // Randomly select imposters from guessers
+    const impostersCount = Math.min(
+      this.settings.importerCount,
+      guessers.length
+    );
+    const shuffled = [...guessers].sort(() => Math.random() - 0.5);
+    const impostorIds = shuffled.slice(0, impostersCount);
+
+    guessers.forEach(id => {
+      const player = this.players.get(id);
+      player.role = impostorIds.includes(id) ? 'imposter' : 'normal';
+    });
+
+    // Word-entering player has no role during guessing
+    const wordEnteringPlayer = this.players.get(this.wordEnteringPlayerId);
+    if (wordEnteringPlayer) {
+      wordEnteringPlayer.role = null; // They don't participate
+    }
+  }
+
+  passCurrentGuesser() {
+    // Mark current guesser as passed
+    if (this.currentGuessingPlayerId) {
+      this.guessersPassed.add(this.currentGuessingPlayerId);
+    }
+
+    // Check if all have passed
+    if (this.guessersPassed.size === this.guessersThisRound.size) {
+      this.endRound();
+      return;
+    }
+
+    // Move to next guesser
+    const guessers = Array.from(this.guessersThisRound);
+    const currentIndex = guessers.indexOf(this.currentGuessingPlayerId);
+    const nextIndex = (currentIndex + 1) % guessers.length;
+    this.currentGuessingPlayerId = guessers[nextIndex];
   }
 
   endRound() {
-    this.inVotingPhase = true;
-    if (this.turnTimer) clearTimeout(this.turnTimer);
-    if (this.notifier) this.notifier('voting-started', { players: this.getPlayers(), timeLimit: this.VOTING_TIME_LIMIT });
-  }
+    this.currentPhase = 'round-end';
+    this.secretWord = '';
+    this.currentGuessingPlayerId = null;
 
-  getRemainingPlayersThisRound() {
-    const alivePlayers = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive)
-      .map(([id]) => id);
-    
-    return alivePlayers.filter(id => !this.playersWhoSubmitted.has(id));
-  }
-
-  // Voters for the current round: exclude the player who last submitted (they know the word)
-  getVotersForCurrentRound() {
-    const alivePlayers = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive)
-      .map(([id]) => id);
-
-    if (this.lastSubmitter) {
-      return alivePlayers.filter(id => id !== this.lastSubmitter);
-    }
-    return alivePlayers;
-  }
-
-  submitVote(playerId, votedPlayerId) {
-    if (!this.inVotingPhase) return;
-    if (this.votes.has(playerId)) return; // Already voted
-    
-    this.votes.set(playerId, votedPlayerId);
-  }
-
-  areAllVotesSubmitted() {
-    const alivePlayers = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive)
-      .map(([id]) => id);
-    
-    return this.votes.size === alivePlayers.length;
-  }
-
-  tallyVotes() {
-    const voteCount = new Map();
-    let maxVotes = 0;
-    let eliminatedPlayer = null;
-
-    // Count votes
-    for (const [, votedId] of this.votes) {
-      voteCount.set(votedId, (voteCount.get(votedId) || 0) + 1);
-      maxVotes = Math.max(maxVotes, voteCount.get(votedId));
-    }
-
-    // Find player with most votes (break ties randomly)
-    const topVoted = Array.from(voteCount.entries())
-      .filter(([, count]) => count === maxVotes)
-      .map(([id]) => id);
-    
-    if (topVoted.length > 0) {
-      eliminatedPlayer = topVoted[Math.floor(Math.random() * topVoted.length)];
-      this.players.get(eliminatedPlayer).alive = false;
-      this.eliminations.push(eliminatedPlayer);
-    }
-
-    // Check if game is over
-    const importersAlive = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive && data.role === 'imposter')
-      .length;
-    
-    const gameOver = importersAlive === 0;
-
-    return {
-      voteCount: Object.fromEntries(voteCount),
-      eliminatedPlayer,
-      impostersRevealed: this.getImpostersRevealed(),
-      gameOver
-    };
-  }
-
-  getImpostersRevealed() {
-    return Array.from(this.players.entries())
-      .filter(([, data]) => data.role === 'imposter' && !data.alive)
-      .map(([id, data]) => ({ id, name: data.name }));
-  }
-
-  revealResults(results) {
-    // Store results for display
-    this.lastResults = results;
-  }
-
-  nextRound() {
-    this.currentRound++;
-    if (this.currentRound <= this.settings.roundCount) {
-      this.startRound();
+    if (this.currentRound < this.totalRounds) {
+      // Prepare next round
+      this.currentRound++;
+      this.selectWordEnteringPlayer();
+      this.guessersThisRound = new Set();
+      this.guessersPassed = new Set();
+      this.currentPhase = 'word-entering';
+    } else {
+      // Game over
+      this.currentPhase = 'game-over';
+      this.gameStarted = false;
     }
   }
 
-  // Reset game-specific state but keep players in the room (useful for restarting)
   resetGame() {
     this.gameStarted = false;
-    this.inVotingPhase = false;
     this.currentRound = 0;
-    this.currentTurnPlayerId = null;
-    this.wordsThisRound = new Map();
-    this.playersWhoSubmitted = new Set();
-    this.votes = new Map();
-    this.eliminations = [];
-    this.lastResults = null;
-    // clear timers
-    if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
-      this.turnTimer = null;
-    }
-    if (this.votingTimer) {
-      clearTimeout(this.votingTimer);
-      this.votingTimer = null;
-    }
-    // reset roles and alive status so a fresh game can be started
-    for (const [id, pdata] of this.players.entries()) {
-      pdata.role = null;
-      pdata.alive = true;
-    }
+    this.currentPhase = 'lobby';
+    this.secretWord = '';
+    this.wordEnteringPlayerId = null;
+    this.currentGuessingPlayerId = null;
+    this.guessersThisRound = new Set();
+    this.guessersPassed = new Set();
+
+    this.players.forEach(p => {
+      p.role = null;
+      p.alive = true;
+      p.isWordEnteringPlayer = false;
+    });
+
+    if (this.roundTimer) clearTimeout(this.roundTimer);
   }
 
-  // Full reset in preparation for room deletion
   reset() {
     this.resetGame();
-    this.players.clear();
-    this.ownerId = null;
-    this.code = null;
-    this.id = null;
-    this.notifier = null;
   }
 
-  getFinalResults() {
-    const importersAlive = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive && data.role === 'imposter').length;
-    
-    const normalPlayersAlive = Array.from(this.players.entries())
-      .filter(([, data]) => data.alive && data.role === 'normal').length;
-
-    let winner = importersAlive === 0 ? 'normal' : 'imposter';
-    if (importersAlive === 0 && normalPlayersAlive === 0) {
-      winner = 'tie';
-    }
-
+  getGameState() {
     return {
-      winner,
-      imposters: Array.from(this.players.entries())
-        .filter(([, data]) => data.role === 'imposter')
-        .map(([id, data]) => ({ id, name: data.name, alive: data.alive })),
-      normalPlayers: Array.from(this.players.entries())
-        .filter(([, data]) => data.role === 'normal')
-        .map(([id, data]) => ({ id, name: data.name, alive: data.alive }))
+      gameStarted: this.gameStarted,
+      currentRound: this.currentRound,
+      totalRounds: this.totalRounds,
+      currentPhase: this.currentPhase,
+      wordEnteringPlayerId: this.wordEnteringPlayerId,
+      currentGuessingPlayerId: this.currentGuessingPlayerId,
+      players: this.getPlayers(),
+      secretWord: this.secretWord,
+      guessersThisRound: Array.from(this.guessersThisRound),
+      guessersPassed: Array.from(this.guessersPassed)
     };
   }
 }

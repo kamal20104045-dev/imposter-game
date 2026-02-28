@@ -7,18 +7,18 @@ const gameState = {
     playerName: null,
     isOwner: false,
     players: [],
-    currentRole: null,
+    currentRole: null, // 'imposter', 'normal', or null
+    currentWord: null,
     gameStarted: false,
     currentRound: 1,
     totalRounds: 3,
-    currentTurnPlayerId: null,
-    currentTurnPlayerName: null,
-    inVotingPhase: false,
-    timeLimit: 30,
-    votingTimeLimit: 20,
-    playersSubmittedThisRound: new Set(),
-    latestWord: '',
-    gameMode: null // 'local' or 'online'
+    currentPhase: 'lobby', // 'word-entering', 'guessing', 'waiting', 'round-end', 'game-over'
+    wordEnteringPlayerId: null, // Player currently entering the word
+    currentGuessingPlayerId: null, // Player whose turn it is to speak
+    guessingPhaseStarted: false,
+    isWordEnteringPlayer: false, // True if this player is entering the word
+    gameMode: null, // 'local' or 'online'
+    guessingPlayers: [] // Players participating in guessing phase (not word-entering player)
 };
 
 // Mode Selection
@@ -66,9 +66,13 @@ function initSocket(mode) {
 
     // Receive role assignment (private to each player)
     gameState.socket.on('role-assigned', (data) => {
-        if (data && data.role) {
-            gameState.currentRole = data.role;
-            displayYourRole();
+        if (data) {
+            gameState.currentRole = data.role; // 'imposter', 'normal', or null
+            gameState.currentWord = data.word || null;
+            gameState.isWordEnteringPlayer = data.isWordEnteringPlayer || false;
+            console.log(`Role: ${gameState.currentRole}, IsWordEntering: ${gameState.isWordEnteringPlayer}`);
+            displayRoleCard();
+            displayWordCard();
         }
     });
     gameState.socket.on('join-success', (data) => {
@@ -115,73 +119,85 @@ function initSocket(mode) {
 
     gameState.socket.on('game-started', (data) => {
         gameState.gameStarted = true;
-        gameState.currentRound = data.roundNumber;
-        gameState.totalRounds = data.totalRounds;
-        gameState.currentTurnPlayerId = data.currentTurn;
-        gameState.timeLimit = data.timeLimit;
-        gameState.playersSubmittedThisRound = new Set();
-        gameState.latestWord = '';
-        // clear display for new round
-        const latestWordEl = document.getElementById('latest-word');
-        if (latestWordEl) latestWordEl.textContent = '';
-        const nowWordEl = document.getElementById('now-word-display');
-        if (nowWordEl) nowWordEl.textContent = '';
+        gameState.currentRound = data.roundNumber || 1;
+        gameState.totalRounds = data.totalRounds || 3;
+        gameState.currentPhase = data.currentPhase || 'word-entering';
+        gameState.wordEnteringPlayerId = data.wordEnteringPlayerId;
+        gameState.currentGuessingPlayerId = data.currentGuessingPlayerId;
+        gameState.players = data.players || [];
+        gameState.guessingPhaseStarted = false;
+        gameState.currentRole = null;
+        gameState.currentWord = null;
+        gameState.isWordEnteringPlayer = (gameState.playerId === gameState.wordEnteringPlayerId);
+        
         showScreen('game-screen');
-         displayYourRole();
-         updateGameDisplay();
-         startTurnTimer(data.timeLimit);
-     });
-
-     gameState.socket.on('word-submitted', (data) => {
-         // data: { submittedById, submittedBy, word (or null), nextTurn, playersLeft }
-         const submitterName = data.submittedBy;
-         const submitterId = data.submittedById;
-         if (data.word) {
-             // Non-imposters receive the actual word
-             console.log(`${submitterName} submitted: ${data.word}`);
-            gameState.latestWord = data.word;
-            const display = `${data.word} (by ${submitterName})`;
-            document.getElementById('latest-word').textContent = display;
-            const nowEl = document.getElementById('now-word-display');
-            if (nowEl) nowEl.textContent = display;
-         } else {
-             // Imposters will receive a null word
-             console.log(`${submitterName} submitted a word (hidden from you)`);
-         }
-         gameState.playersSubmittedThisRound.add(submitterId);
-         gameState.currentTurnPlayerId = data.nextTurn;
-         updateGameDisplay();
-         if (data.playersLeft > 0) {
-             startTurnTimer(gameState.timeLimit);
-         }
-     });
-
-     gameState.socket.on('turn-updated', (data) => {
-         gameState.currentTurnPlayerId = data.currentTurn;
-         updateGameDisplay();
-         if (data.playersLeft > 0) startTurnTimer(gameState.timeLimit);
-     });
-
-    gameState.socket.on('voting-phase-started', (data) => {
-        gameState.inVotingPhase = true;
-        gameState.players = data.players;
-        // store eligible voters (array of ids) if provided
-        gameState.eligibleVoters = data.voters || gameState.players.filter(p => p.alive).map(p => p.id);
-        showVotingPhase(data.players, data.timeLimit, gameState.eligibleVoters);
-        startVotingTimer(data.timeLimit);
+        updateGameDisplay();
+        
+        // Show word-entering phase
+        const enteringPhase = document.getElementById('word-entering-phase');
+        const guessingPhase = document.getElementById('guessing-phase');
+        const waitingPhase = document.getElementById('waiting-phase');
+        
+        if (enteringPhase) enteringPhase.classList.remove('hidden');
+        if (guessingPhase) guessingPhase.classList.add('hidden');
+        if (waitingPhase) waitingPhase.classList.add('hidden');
+        
+        updateWordEnteringPhase();
     });
 
-    gameState.socket.on('voting-results', (data) => {
-        showVotingResults(data);
+    gameState.socket.on('role-assigned', (data) => {
+        gameState.currentRole = data.role;
+        gameState.currentWord = data.word || null;
+        console.log(`Role assigned: ${data.role}, Word: ${data.word ? 'received' : 'not shown'}`);
+        displayRoleCard();
+    });
+
+    gameState.socket.on('word-submitted', (data) => {
+        gameState.currentRound = data.roundNumber || gameState.currentRound;
+        gameState.currentPhase = data.currentPhase || 'guessing';
+        gameState.currentGuessingPlayerId = data.currentGuessingPlayerId;
+        gameState.players = data.players || [];
+        gameState.guessingPhaseStarted = true;
+        gameState.guessingPlayers = data.guessingPlayers || [];
+        
+        // Hide other phases, show guessing phase
+        const enteringPhase = document.getElementById('word-entering-phase');
+        const guessingPhase = document.getElementById('guessing-phase');
+        const waitingPhase = document.getElementById('waiting-phase');
+        
+        if (enteringPhase) enteringPhase.classList.add('hidden');
+        if (guessingPhase) guessingPhase.classList.remove('hidden');
+        if (waitingPhase) waitingPhase.classList.add('hidden');
+        
+        // If this player enters the word, show waiting screen
+        if (gameState.isWordEnteringPlayer) {
+            if (guessingPhase) guessingPhase.classList.add('hidden');
+            if (waitingPhase) waitingPhase.classList.remove('hidden');
+        }
+        
+        updateGameDisplay();
+    });
+
+    gameState.socket.on('turn-updated', (data) => {
+        gameState.currentPhase = data.currentPhase;
+        gameState.currentGuessingPlayerId = data.currentGuessingPlayerId;
+        gameState.players = data.players || [];
+        updateGameDisplay();
+    });
+
+    gameState.socket.on('round-ended', (data) => {
+        gameState.currentRound = data.roundNumber;
+        gameState.totalRounds = data.totalRounds;
+        gameState.players = data.players || [];
+        showRoundEndScreen();
     });
 
     gameState.socket.on('game-over', (data) => {
-        showGameOver(data.finalResults);
+        showGameOverScreen();
     });
 
     gameState.socket.on('room-closed', (data) => {
         showError(data.message || 'Room closed');
-        // disconnect and return to landing after short delay
         setTimeout(() => {
             if (gameState.socket) gameState.socket.disconnect();
             resetLocalGameState();
@@ -190,13 +206,10 @@ function initSocket(mode) {
     });
 
     gameState.socket.on('room-reset', (data) => {
-        // show lobby and clear game-specific UI so owner can start fresh
         gameState.gameStarted = false;
         gameState.currentRound = 1;
-        gameState.currentTurnPlayerId = null;
-        gameState.playersSubmittedThisRound = new Set();
-        gameState.inVotingPhase = false;
-        gameState.players = data.players || gameState.players;
+        gameState.currentPhase = 'lobby';
+        gameState.players = data.players || [];
         updatePlayersList();
         showScreen('lobby-screen');
     });
@@ -351,7 +364,7 @@ function updatePlayersList() {
     updateStartButtonState();
 }
 
-// Update the in-game players list (shows during gameplay)
+// Update the in-game players list
 function updateInGamePlayersList() {
     const el = document.getElementById('in-game-players-list');
     if (!el) return;
@@ -360,8 +373,7 @@ function updateInGamePlayersList() {
             <span class="player-name">${player.name}</span>
             <div>
                 ${player.isOwner ? '<span class="player-badge owner">👑</span>' : ''}
-                ${!player.alive ? '<span class="player-badge eliminated">💀</span>' : ''}
-                ${player.id === gameState.currentTurnPlayerId ? '<span class="player-badge turn">▶️</span>' : ''}
+                ${player.id === gameState.currentGuessingPlayerId ? '<span class="player-badge turn">▶️</span>' : ''}
             </div>
         </div>
     `).join('');
@@ -434,227 +446,192 @@ document.getElementById('start-game-btn').addEventListener('click', () => {
     gameState.socket.emit('start-game');
 });
 
-// Game Screen
+// Word Entering Phase Display
+function updateWordEnteringPhase() {
+    const selfEl = document.getElementById('word-entering-self');
+    const waitingEl = document.getElementById('word-entering-waiting');
+    const playerNameEl = document.getElementById('word-entering-player-name');
+    const wordEnteringBanner = document.getElementById('word-entering-banner');
+    
+    const isWordEnteringPlayer = gameState.playerId === gameState.wordEnteringPlayerId;
+    
+    // Update top banner showing who is entering
+    if (wordEnteringBanner) {
+        const wordPlayer = gameState.players.find(p => p.id === gameState.wordEnteringPlayerId);
+        if (wordPlayer) {
+            wordEnteringBanner.textContent = `⏳ ${wordPlayer.name} is entering the word...`;
+            wordEnteringBanner.classList.remove('hidden');
+        }
+    }
+    
+    if (isWordEnteringPlayer) {
+        if (selfEl) selfEl.classList.remove('hidden');
+        if (waitingEl) waitingEl.classList.add('hidden');
+    } else {
+        if (selfEl) selfEl.classList.add('hidden');
+        if (waitingEl) waitingEl.classList.remove('hidden');
+        
+        // Find word-entering player's name
+        const wordPlayer = gameState.players.find(p => p.id === gameState.wordEnteringPlayerId);
+        if (playerNameEl && wordPlayer) {
+            playerNameEl.textContent = `${wordPlayer.name} is entering the word...`;
+        }
+    }
+}
+
+// Game Display
 function updateGameDisplay() {
     document.getElementById('current-round').textContent = gameState.currentRound;
     document.getElementById('total-rounds').textContent = gameState.totalRounds;
     
-    const isMyTurn = gameState.currentTurnPlayerId === gameState.playerId;
-    const currentPlayer = gameState.players.find(p => p.id === gameState.currentTurnPlayerId);
-    const currentName = currentPlayer ? currentPlayer.name : 'Unknown';
-    
-    document.getElementById('turn-status').textContent = `Turn: ${currentName}`;
-    
-    const yourTurn = document.getElementById('your-turn');
-    const waitingTurn = document.getElementById('waiting-turn');
-    
-    if (isMyTurn) {
-        yourTurn.classList.remove('hidden');
-        waitingTurn.classList.add('hidden');
-        yourTurn.classList.add('active');
-        waitingTurn.classList.remove('active');
-        // enable the manual next‑player button
-        const nextBtn = document.getElementById('next-player-btn');
-        if (nextBtn) nextBtn.disabled = false;
+    if (!gameState.guessingPhaseStarted) {
+        updateWordEnteringPhase();
     } else {
-        yourTurn.classList.add('hidden');
-        waitingTurn.classList.remove('hidden');
-        yourTurn.classList.remove('active');
-        waitingTurn.classList.add('active');
+        // If player is the word-entering player, show waiting screen
+        if (gameState.isWordEnteringPlayer) {
+            // Hide other phases
+            document.getElementById('word-entering-phase').classList.add('hidden');
+            document.getElementById('guessing-phase').classList.add('hidden');
+            const waitingPhase = document.getElementById('waiting-phase');
+            if (waitingPhase) waitingPhase.classList.remove('hidden');
+            
+            // Update waiting game players list
+            const waitingList = document.getElementById('waiting-game-players');
+            if (waitingList) {
+                waitingList.innerHTML = gameState.players.map(player => `
+                    <div class="player-item">
+                        <span class="player-name">${player.name}</span>
+                        <div>
+                            ${player.id === gameState.currentGuessingPlayerId ? '<span class="player-badge turn">🎤 Speaking</span>' : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } else {
+            // Show guessing phase
+            updateGuessingPhaseDisplay();
+        }
     }
-
-    // Update player status display
-    updatePlayersStatus();
+    
     updateInGamePlayersList();
 }
 
-// Word Submission
-document.getElementById('submit-word-btn').addEventListener('click', () => {
-    const word = document.getElementById('word-input').value.trim();
-    if (!word) {
-        showError('Please enter a word');
-        return;
+function updateGuessingPhaseDisplay() {
+    const isMyTurn = gameState.playerId === gameState.currentGuessingPlayerId;
+    const turnIndicator = document.getElementById('turn-indicator');
+    const waitingTurn = document.getElementById('waiting-turn');
+    const passBtn = document.getElementById('pass-btn');
+    const currentPlayerBanner = document.getElementById('current-player-banner');
+    
+    // Update top banner showing current player's turn
+    if (currentPlayerBanner) {
+        const currentPlayer = gameState.players.find(p => p.id === gameState.currentGuessingPlayerId);
+        if (currentPlayer) {
+            currentPlayerBanner.textContent = `🎤 ${currentPlayer.name}'s Turn to Speak`;
+            currentPlayerBanner.classList.remove('hidden');
+        }
     }
-    gameState.socket.emit('submit-word', { word });
-    document.getElementById('word-input').value = '';
-    // after submitting we can disable the next button to prevent
-    // accidentally advancing twice
-    const nextBtn = document.getElementById('next-player-btn');
-    if (nextBtn) nextBtn.disabled = true;
+    
+    if (isMyTurn) {
+        if (turnIndicator) turnIndicator.classList.remove('hidden');
+        if (waitingTurn) waitingTurn.classList.add('hidden');
+        if (passBtn) passBtn.disabled = false;
+    } else {
+        if (turnIndicator) turnIndicator.classList.add('hidden');
+        if (waitingTurn) waitingTurn.classList.remove('hidden');
+        
+        // Update waiting text with current player's name
+        const currentPlayer = gameState.players.find(p => p.id === gameState.currentGuessingPlayerId);
+        if (currentPlayer && document.getElementById('current-player-name')) {
+            document.getElementById('current-player-name').textContent = currentPlayer.name;
+        }
+    }
+}
+
+// Flippable Card Logic
+let flippedCard = null;
+
+function flipCard(cardId) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+    
+    // If another card is flipped, flip it back
+    if (flippedCard && flippedCard !== cardId) {
+        document.getElementById(flippedCard).classList.remove('flipped');
+    }
+    
+    card.classList.toggle('flipped');
+    flippedCard = card.classList.contains('flipped') ? cardId : null;
+}
+
+function displayRoleCard() {
+    const roleContent = document.getElementById('role-content');
+    if (!roleContent) return;
+    
+    if (gameState.currentRole === 'imposter') {
+        roleContent.innerHTML = '<p style="font-size: 24px;">🕵️</p><p style="margin-top: 10px;"><strong>You are the</strong></p><p><strong>IMPOSTER</strong></p>';
+    } else if (gameState.currentRole === 'normal') {
+        roleContent.innerHTML = '<p style="font-size: 24px;">👤</p><p style="margin-top: 10px;"><strong>You are a</strong></p><p><strong>NORMAL PLAYER</strong></p>';
+    } else if (gameState.isWordEnteringPlayer) {
+        roleContent.innerHTML = '<p style="font-size: 24px;">✍️</p><p style="margin-top: 10px;"><strong>You are the</strong></p><p><strong>WORD KEEPER</strong></p>';
+    } else {
+        roleContent.innerHTML = '<p>Loading...</p>';
+    }
+}
+
+function displayWordCard() {
+    const wordContent = document.getElementById('word-content');
+    if (!wordContent) return;
+    
+    if (gameState.isWordEnteringPlayer) {
+        // Word-entering player doesn't see the word card during guessing
+        wordContent.innerHTML = '<p><strong>Waiting...</strong></p><p style="font-size: 12px; margin-top: 10px;">You\'ve entered the word.<br>Watch the game!</p>';
+    } else if (gameState.currentRole === 'imposter') {
+        wordContent.innerHTML = '<p style="font-size: 24px;">🤐</p><p style="margin-top: 10px;"><strong>You don\'t know<br>the word!</strong></p><p style="font-size: 12px; margin-top: 10px;">Find the word<br>from clues</p>';
+    } else if (gameState.currentWord) {
+        wordContent.innerHTML = `<p style="font-size: 32px; font-weight: bold;">${gameState.currentWord.toUpperCase()}</p><p style="font-size: 12px; margin-top: 10px;">You know the word!<br>Help without saying it</p>`;
+    } else {
+        wordContent.innerHTML = '<p>Loading...</p>';
+    }
+}
+
+// Word Submission
+document.addEventListener('DOMContentLoaded', () => {
+    const submitWordBtn = document.getElementById('submit-word-btn');
+    if (submitWordBtn) {
+        submitWordBtn.addEventListener('click', () => {
+            const word = document.getElementById('word-input').value.trim();
+            if (!word) {
+                showError('Please enter a word');
+                return;
+            }
+            gameState.socket.emit('submit-word', { word });
+            document.getElementById('word-input').value = '';
+        });
+    }
+    
+    const passBtn = document.getElementById('pass-btn');
+    if (passBtn) {
+        passBtn.addEventListener('click', () => {
+            gameState.socket.emit('pass-turn');
+            passBtn.disabled = true;
+        });
+    }
 });
 
-// Next player manual advance
-const nextBtn = document.getElementById('next-player-btn');
-if (nextBtn) {
-    nextBtn.addEventListener('click', () => {
-        gameState.socket.emit('next-turn');
-        nextBtn.disabled = true;
-    });
-}
-
-// Timers
-let turnTimerInterval;
-let votingTimerInterval;
-
-function startTurnTimer(seconds) {
-    let remaining = seconds;
-    const timerEl = document.getElementById('turn-timer');
-    
-    clearInterval(turnTimerInterval);
-    timerEl.textContent = remaining;
-    timerEl.classList.remove('warning', 'danger');
-    
-    turnTimerInterval = setInterval(() => {
-        remaining--;
-        timerEl.textContent = remaining;
-        
-        if (remaining <= 5) {
-            timerEl.classList.add('warning');
-        }
-        if (remaining <= 2) {
-            timerEl.classList.add('danger');
-        }
-        
-        if (remaining <= 0) {
-            clearInterval(turnTimerInterval);
-        }
-    }, 1000);
-}
-
-function startVotingTimer(seconds) {
-    let remaining = seconds;
-    const timerEl = document.getElementById('voting-timer');
-    
-    clearInterval(votingTimerInterval);
-    timerEl.textContent = remaining;
-    timerEl.classList.remove('warning', 'danger');
-    
-    votingTimerInterval = setInterval(() => {
-        remaining--;
-        timerEl.textContent = remaining;
-        
-        if (remaining <= 5) {
-            timerEl.classList.add('warning');
-        }
-        if (remaining <= 2) {
-            timerEl.classList.add('danger');
-        }
-        
-        if (remaining <= 0) {
-            clearInterval(votingTimerInterval);
-        }
-    }, 1000);
-}
-
-// Voting Phase
-function showVotingPhase(players, timeLimit) {
-    document.getElementById('turn-phase').classList.remove('active');
-    document.getElementById('voting-phase').classList.add('active');
-    
-    const alivePlayers = players.filter(p => p.alive);
-    const votingEl = document.getElementById('voting-options');
-    
-    // If eligibleVoters provided, only show vote buttons for those players
-    const eligible = gameState.eligibleVoters || alivePlayers.map(p => p.id);
-
-    votingEl.innerHTML = alivePlayers.map(player => {
-        if (!eligible.includes(player.id)) {
-            return `
-                <div class="vote-btn disabled">${player.name} (not voting)</div>
-            `;
-        }
-        return `
-            <button class="vote-btn" onclick="submitVote('${player.id}', this)">
-                ${player.name}
-            </button>
-        `;
-    }).join('');
-}
-
-let selectedVote = null;
-
-function submitVote(playerId, element) {
-    if (selectedVote) {
-        document.querySelector('.vote-btn.selected').classList.remove('selected');
+// Round End Screen
+function showRoundEndScreen() {
+    const roundEndPhase = document.getElementById('round-end-phase');
+    if (roundEndPhase) {
+        roundEndPhase.classList.remove('hidden');
+        document.getElementById('word-entering-phase').classList.add('hidden');
+        document.getElementById('guessing-phase').classList.add('hidden');
     }
-    selectedVote = playerId;
-    element.classList.add('selected');
-    gameState.socket.emit('submit-vote', { votedPlayerId: playerId });
 }
 
-// Results
-function showVotingResults(data) {
-    clearInterval(votingTimerInterval);
-    document.getElementById('voting-phase').classList.remove('active');
-    document.getElementById('results-phase').classList.add('active');
-    
-    const resultsEl = document.getElementById('results-content');
-    const eliminated = data.eliminatedPlayer ? 
-        gameState.players.find(p => p.id === data.eliminatedPlayer)?.name : 'Nobody';
-    
-    let resultHTML = `
-        <div class="result-item">
-            <h4>Eliminated Player</h4>
-            <p>${eliminated}</p>
-        </div>
-    `;
-    
-    if (data.impostersRevealed.length > 0) {
-        resultHTML += `
-            <div class="result-item imposter">
-                <h4>🕵️ Imposters Revealed</h4>
-                <p>${data.impostersRevealed.map(i => i.name).join(', ')}</p>
-            </div>
-        `;
-    }
-    
-    resultsEl.innerHTML = resultHTML;
-}
-
-// Game Over
-function showGameOver(results) {
-    clearInterval(turnTimerInterval);
-    clearInterval(votingTimerInterval);
-    
-    document.getElementById('voting-phase').classList.remove('active');
-    document.getElementById('results-phase').classList.remove('active');
-    
+// Game Over Screen
+function showGameOverScreen() {
     showScreen('game-over-screen');
-    
-    const winner = results.winner;
-    let title = '👥 Normal Players Win!';
-    if (winner === 'imposter') {
-        title = '🕵️ Imposters Win!';
-    } else if (winner === 'tie') {
-        title = '🤝 It\'s a Tie!';
-    }
-    
-    document.getElementById('game-result-title').textContent = title;
-    
-    const contentEl = document.getElementById('game-result-content');
-    contentEl.innerHTML = `
-        <div class="team-section">
-            <h4>Imposters</h4>
-            <ul class="team-members">
-                ${results.imposters.map(p => `
-                    <li class="${p.alive ? 'alive' : 'dead'}">
-                        ${p.name}
-                    </li>
-                `).join('')}
-            </ul>
-        </div>
-        
-        <div class="team-section">
-            <h4>Normal Players</h4>
-            <ul class="team-members">
-                ${results.normalPlayers.map(p => `
-                    <li class="${p.alive ? 'alive' : 'dead'}">
-                        ${p.name}
-                    </li>
-                `).join('')}
-            </ul>
-        </div>
-    `;
 }
 
 document.getElementById('return-to-lobby-btn').addEventListener('click', () => {
@@ -717,54 +694,23 @@ function displayYourRole() {
     }
 }
 
-// Update Players Status Display
-function updatePlayersStatus() {
-    const statusEl = document.getElementById('players-status');
-    if (!statusEl) return;
-    
-    const alivePlayers = gameState.players.filter(p => p.alive);
-    
-    statusEl.innerHTML = alivePlayers.map(player => {
-        let badge = 'waiting';
-        let badgeText = 'Waiting';
-        
-        if (player.id === gameState.currentTurnPlayerId) {
-            badge = 'waiting';
-            badgeText = 'Current Turn';
-        } else if (gameState.playersSubmittedThisRound.has(player.id)) {
-            badge = 'submitted';
-            badgeText = 'Submitted';
-        }
-        
-        return `
-            <div class="player-status-item">
-                <span>${player.name}</span>
-                <span class="player-status-badge ${badge}">${badgeText}</span>
-            </div>
-        `;
-    }).join('');
-}
-
-// Reset local UI/game state (preserve socket disconnected behavior separately)
+// Reset local UI/game state
 function resetLocalGameState() {
     gameState.roomId = null;
     gameState.roomCode = null;
     gameState.isOwner = false;
     gameState.currentRole = null;
+    gameState.currentWord = null;
     gameState.gameStarted = false;
     gameState.currentRound = 1;
     gameState.totalRounds = 3;
-    gameState.currentTurnPlayerId = null;
-    gameState.currentTurnPlayerName = null;
-    gameState.inVotingPhase = false;
-    gameState.playersSubmittedThisRound = new Set();
+    gameState.currentPhase = 'lobby';
+    gameState.wordEnteringPlayerId = null;
+    gameState.currentGuessingPlayerId = null;
+    gameState.guessingPhaseStarted = false;
     gameState.players = [];
-    // clear UI timers
-    clearInterval(turnTimerInterval);
-    clearInterval(votingTimerInterval);
 }
 
 // Initialize
 setupSettingsControls();
-setupHowToPlayModal();
 // Don't auto-initialize socket - wait for mode selection
