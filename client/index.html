@@ -268,13 +268,20 @@
                 <div id="voting-phase" class="phase hidden">
                     <h3>Vote for the Imposter</h3>
                     <p>Select who you think is the imposter:</p>
+                    <div id="vote-progress" class="vote-progress">
+                        <p><span id="votes-cast">0</span> out of <span id="total-voters">0</span> voted</p>
+                        <div id="vote-progress-bar" class="progress-bar">
+                            <div id="vote-progress-fill" class="progress-fill"></div>
+                        </div>
+                    </div>
                     <div id="voting-players-list" class="players-list"></div>
                 </div>
 
                 <!-- Reveal Phase -->
                 <div id="reveal-phase" class="phase hidden">
-                    <h3>Vote Results</h3>
-                    <div id="reveal-content"></div>
+                    <h3>Imposter Revealed!</h3>
+                    <div id="reveal-content" class="reveal-content"></div>
+                    <p style="margin-top: 20px; color: #666; font-size: 14px;">Next session starting in <span id="countdown">3</span>...</p>
                 </div>
 
                 <!-- Round End Phase -->

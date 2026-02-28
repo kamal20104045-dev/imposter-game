@@ -204,7 +204,10 @@ function initSocket(mode) {
         gameState.players = data.players || [];
         gameState.guessingPlayers = data.guessingPlayers || [];
         gameState.hasVoted = false;
+        gameState.totalVoters = gameState.players.length - 1; // all except word-entering player
+        gameState.votesCast = 0;
         showVotingPhase();
+        updateVoteProgress();
     });
 
     gameState.socket.on('vote-results', (data) => {
@@ -566,6 +569,13 @@ function showVotingPhase() {
     document.querySelectorAll('#word-entering-phase, #guessing-phase, #waiting-phase, #voting-phase, #reveal-phase').forEach(el => el.classList.add('hidden'));
     const voting = document.getElementById('voting-phase');
     if (voting) voting.classList.remove('hidden');
+    
+    // hide turn indicator during voting
+    const waitingTurn = document.getElementById('waiting-turn');
+    const turnIndicator = document.getElementById('turn-indicator');
+    if (waitingTurn) waitingTurn.classList.add('hidden');
+    if (turnIndicator) turnIndicator.classList.add('hidden');
+    
     updateVotingList();
 }
 
@@ -577,6 +587,7 @@ function updateVotingList() {
     listEl.innerHTML = eligible.map(player => `
         <div class="player-item" data-id="${player.id}">
             <span class="player-name">${player.name}</span>
+            <span class="vote-indicator" style="display:none;">✓ Voted</span>
         </div>
     `).join('');
 
@@ -587,28 +598,86 @@ function updateVotingList() {
             const targetId = item.getAttribute('data-id');
             gameState.socket.emit('submit-vote', { targetId });
             gameState.hasVoted = true;
-            item.style.opacity = '0.5';
+            gameState.votesCast++;
+            item.classList.add('voted');
+            item.querySelector('.vote-indicator').style.display = 'inline';
+            updateVoteProgress();
         });
     });
+}
+
+function updateVoteProgress() {
+    const votesCastEl = document.getElementById('votes-cast');
+    const totalVotersEl = document.getElementById('total-voters');
+    const progressFillEl = document.getElementById('vote-progress-fill');
+    
+    if (votesCastEl) votesCastEl.textContent = gameState.votesCast || 0;
+    if (totalVotersEl) totalVotersEl.textContent = gameState.totalVoters || 0;
+    
+    if (progressFillEl && gameState.totalVoters > 0) {
+        const percentage = (gameState.votesCast / gameState.totalVoters) * 100;
+        progressFillEl.style.width = percentage + '%';
+    }
 }
 
 function showRevealPhase() {
     document.querySelectorAll('#word-entering-phase, #guessing-phase, #waiting-phase, #voting-phase, #reveal-phase').forEach(el => el.classList.add('hidden'));
     const reveal = document.getElementById('reveal-phase');
     if (reveal) reveal.classList.remove('hidden');
-    // display results
+    
+    // display results with animation
     const content = document.getElementById('reveal-content');
     if (!content || !gameState.voteResults) return;
+    
     const names = id => gameState.players.find(p=>p.id===id)?.name || 'Unknown';
     const { winners, actual, counts } = gameState.voteResults;
-    let html = '<p>Votes:</p><ul>';
+    
+    // Build enhanced reveal HTML
+    let html = '<div class="reveal-content">';
+    html += '<h2 style="margin-top: 0;">Results</h2>';
+    
+    // Show vote counts
+    html += '<div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">';
+    html += '<p style="font-weight: bold; margin: 10px 0;">Vote Tally:</p>';
     for (const [id, cnt] of Object.entries(counts)) {
-        html += `<li>${names(id)}: ${cnt}</li>`;
+        html += `<p style="margin: 8px 0;"><strong>${names(id)}</strong>: ${cnt} votes</p>`;
     }
-    html += '</ul>';
-    html += `<p>Imposters were: ${actual.map(names).join(', ')}</p>`;
-    html += `<p>Voted ${winners.map(names).join(', ')}</p>`;
+    html += '</div>';
+    
+    // Show who was eliminated
+    html += '<div class="imposter-box">🚨 Voted Out: ' + winners.map(names).join(', ') + '</div>';
+    
+    // Show actual imposters
+    html += '<div style="background: #fff3cd; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #ffc107;">';
+    html += '<p style="font-weight: bold; margin: 10px 0;">Actual Impostors Were:</p>';
+    html += '<p style="margin: 5px 0; font-size: 18px;">' + actual.map(names).join(', ') + '</p>';
+    html += '</div>';
+    
+    html += '</div>';
     content.innerHTML = html;
+    
+    // Start countdown timer for next session
+    startNextSessionCountdown();
+}
+
+function startNextSessionCountdown() {
+    const countdownEl = document.getElementById('countdown');
+    if (!countdownEl) return;
+    
+    let secondsLeft = 3;
+    countdownEl.textContent = 'Starting next session in ' + secondsLeft + ' seconds...';
+    countdownEl.classList.remove('hidden');
+    
+    const timer = setInterval(() => {
+        secondsLeft--;
+        if (secondsLeft > 0) {
+            countdownEl.textContent = 'Starting next session in ' + secondsLeft + ' seconds...';
+        } else {
+            clearInterval(timer);
+            countdownEl.classList.add('hidden');
+            // Server automatically transitions after 3 seconds
+        }
+    }, 1000);
 }
 
 function updateGuessingPhaseDisplay() {

@@ -641,16 +641,88 @@ button, input[type="text"], input[type="number"] {
 }
 
 /* voting & reveal states */
-#voting-phase .player-item,
-#reveal-phase .player-item {
+#voting-phase .player-item {
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.3s ease;
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 #voting-phase .player-item:hover {
-    background: #f0f0f0;
+    background: #e7f3ff;
+    border-color: #667eea;
+    transform: translateX(5px);
+}
+#voting-phase .player-item.voted {
+    background: #d4edda;
+    border-color: #28a745;
+    opacity: 0.6;
+}
+.vote-progress {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+    border: 2px solid #e9ecef;
+}
+.vote-progress p {
+    margin: 0 0 10px 0;
+    font-weight: 600;
+    color: #333;
+}
+.progress-bar {
+    width: 100%;
+    height: 25px;
+    background: #e9ecef;
+    border-radius: 12px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    width: 0%;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 12px;
 }
 #reveal-phase {
     text-align: center;
+}
+.reveal-content {
+    animation: revealAnimation 0.8s ease-out;
+}
+@keyframes revealAnimation {
+    0% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+.imposter-box {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 15px;
+    margin: 20px 0;
+    font-size: 24px;
+    font-weight: bold;
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.3);
 }
 
 /* Content Card */
