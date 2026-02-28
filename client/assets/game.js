@@ -64,6 +64,13 @@ function initSocket(mode) {
         gameState.playerId = gameState.socket.id;
     });
 
+    // Receive role assignment (private to each player)
+    gameState.socket.on('role-assigned', (data) => {
+        if (data && data.role) {
+            gameState.currentRole = data.role;
+            displayYourRole();
+        }
+    });
     gameState.socket.on('join-success', (data) => {
         gameState.roomId = data.roomId;
         gameState.roomCode = data.roomCode;
