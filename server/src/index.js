@@ -119,6 +119,8 @@ io.on('connection', (socket) => {
       
       room.startGame();
       io.to(room.id).emit('game-started', {
+        sessionNumber: room.currentSession,
+        totalSessions: room.totalSessions,
         roundNumber: room.currentRound,
         totalRounds: room.totalRounds,
         currentPhase: room.currentPhase,
@@ -143,15 +145,13 @@ io.on('connection', (socket) => {
       const pdata = room.players.get(pid);
       const isWordEnteringPlayer = (pid === room.wordEnteringPlayerId);
       
-      // Send role assignment only to non-word-entering players
       if (!isWordEnteringPlayer) {
         io.to(pid).emit('role-assigned', { 
           role: pdata.role,
-          word: pdata.role === 'normal' ? word : null, // Normal players see word, imposters don't
+          word: pdata.role === 'normal' ? word : null,
           isWordEnteringPlayer: false
         });
       } else {
-        // Word-entering player gets a special indicator
         io.to(pid).emit('role-assigned', { 
           role: null,
           word: null,
@@ -166,7 +166,9 @@ io.on('connection', (socket) => {
     );
 
     io.to(room.id).emit('word-submitted', {
+      sessionNumber: room.currentSession,
       roundNumber: room.currentRound,
+      totalRounds: room.totalRounds,
       currentPhase: room.currentPhase,
       currentGuessingPlayerId: room.currentGuessingPlayerId,
       guessingPlayers: guessingPlayerIds,
@@ -183,36 +185,102 @@ io.on('connection', (socket) => {
 
     room.passCurrentGuesser();
 
-    if (room.currentPhase === 'round-end') {
-      io.to(room.id).emit('round-ended', {
-        roundNumber: room.currentRound,
-        totalRounds: room.totalRounds,
+    // if we just entered voting phase
+    if (room.currentPhase === 'voting') {
+      // notify clients to show voting UI
+      io.to(room.id).emit('voting-started', {
+        sessionNumber: room.currentSession,
+        totalSessions: room.totalSessions,
+        guessingPlayers: room.guessersOrder,
+        players: room.getPlayers()
+      });
+      return;
+    }
+
+    // if we just finished voting and are in reveal
+    if (room.currentPhase === 'reveal') {
+      io.to(room.id).emit('vote-results', {
+        voteResults: room.voteResults,
         players: room.getPlayers()
       });
 
-      if (room.currentPhase === 'game-over') {
-        // All rounds completed
-        io.to(room.id).emit('game-over', {});
-      } else {
-        // Move to next round after a delay
-        setTimeout(() => {
-          io.to(room.id).emit('game-started', {
-            roundNumber: room.currentRound,
-            totalRounds: room.totalRounds,
-            currentPhase: room.currentPhase,
-            wordEnteringPlayerId: room.wordEnteringPlayerId,
-            players: room.getPlayers()
-          });
-        }, 2000);
-      }
-    } else {
-      // Update all players with new current guesser
-      io.to(room.id).emit('turn-updated', {
-        currentPhase: room.currentPhase,
-        currentGuessingPlayerId: room.currentGuessingPlayerId,
-        guessersPassed: Array.from(room.guessersPassed),
+      // after a short delay, move to next session or end game
+      setTimeout(() => {
+        if (room.gameStarted && room.currentPhase === 'reveal') {
+          // move into end-of-session logic
+          room.endSession();
+          if (room.currentPhase === 'game-over') {
+            io.to(room.id).emit('game-over', {});
+          } else {
+            // notify clients of new session start
+            io.to(room.id).emit('session-ended', {
+              nextSessionNumber: room.currentSession,
+              totalSessions: room.totalSessions
+            });
+            io.to(room.id).emit('game-started', {
+              sessionNumber: room.currentSession,
+              totalSessions: room.totalSessions,
+              roundNumber: room.currentRound,
+              totalRounds: room.totalRounds,
+              currentPhase: room.currentPhase,
+              wordEnteringPlayerId: room.wordEnteringPlayerId,
+              players: room.getPlayers()
+            });
+          }
+        }
+      }, 3000);
+
+      return;
+    }
+
+    // still in guessing phase normally
+    io.to(room.id).emit('turn-updated', {
+      currentPhase: room.currentPhase,
+      currentGuessingPlayerId: room.currentGuessingPlayerId,
+      turnsRemaining: room.turnsRemaining,
+      players: room.getPlayers()
+    });
+  });
+
+  // allow players to submit votes during voting phase
+  socket.on('submit-vote', (data) => {
+    const room = gameManager.getRoomByPlayerId(socket.id);
+    if (!room || !room.gameStarted) return;
+    if (room.currentPhase !== 'voting') return;
+
+    const { targetId } = data;
+    room.submitVote(socket.id, targetId);
+
+    // if voteResults computed we should broadcast them
+    if (room.currentPhase === 'reveal') {
+      io.to(room.id).emit('vote-results', {
+        voteResults: room.voteResults,
         players: room.getPlayers()
       });
+
+      // same post-reveal transition as in pass-turn
+      setTimeout(() => {
+        if (room.gameStarted && room.currentPhase === 'reveal') {
+          room.endSession();
+          if (room.currentPhase === 'game-over') {
+            io.to(room.id).emit('game-over', {});
+          } else {
+            io.to(room.id).emit('session-ended', {
+              nextSessionNumber: room.currentSession,
+              totalSessions: room.totalSessions
+            });
+            io.to(room.id).emit('game-started', {
+              sessionNumber: room.currentSession,
+              totalSessions: room.totalSessions,
+              roundNumber: room.currentRound,
+              totalRounds: room.totalRounds,
+              currentPhase: room.currentPhase,
+              wordEnteringPlayerId: room.wordEnteringPlayerId,
+              players: room.getPlayers()
+            });
+          }
+        }
+      }, 3000);
     }
   });
 

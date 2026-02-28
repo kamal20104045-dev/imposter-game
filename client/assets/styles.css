@@ -631,6 +631,26 @@ button, input[type="text"], input[type="number"] {
     background: rgba(102, 126, 234, 0.05);
 }
 
+/* session indicator above round info */
+.session-info {
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+/* voting & reveal states */
+#voting-phase .player-item,
+#reveal-phase .player-item {
+    cursor: pointer;
+    transition: background 0.2s;
+}
+#voting-phase .player-item:hover {
+    background: #f0f0f0;
+}
+#reveal-phase {
+    text-align: center;
+}
+
 /* Content Card */
 .content-card {
     background: white;

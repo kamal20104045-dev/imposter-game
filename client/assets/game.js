@@ -10,15 +10,20 @@ const gameState = {
     currentRole: null, // 'imposter', 'normal', or null
     currentWord: null,
     gameStarted: false,
+    currentSession: 1,
+    totalSessions: 1,
     currentRound: 1,
     totalRounds: 3,
-    currentPhase: 'lobby', // 'word-entering', 'guessing', 'waiting', 'round-end', 'game-over'
+    currentPhase: 'lobby', // 'word-entering', 'guessing', 'voting', 'reveal', 'waiting', 'round-end', 'game-over'
     wordEnteringPlayerId: null, // Player currently entering the word
     currentGuessingPlayerId: null, // Player whose turn it is to speak
     guessingPhaseStarted: false,
     isWordEnteringPlayer: false, // True if this player is entering the word
     gameMode: null, // 'local' or 'online'
-    guessingPlayers: [] // Players participating in guessing phase (not word-entering player)
+    guessingPlayers: [], // Players participating in guessing phase
+    turnsRemaining: 0,
+    voteResults: null,
+    hasVoted: false
 };
 
 // Mode Selection
@@ -117,6 +122,8 @@ function initSocket(mode) {
 
     gameState.socket.on('game-started', (data) => {
         gameState.gameStarted = true;
+        gameState.currentSession = data.sessionNumber || 1;
+        gameState.totalSessions = data.totalSessions || gameState.totalSessions;
         gameState.currentRound = data.roundNumber || 1;
         gameState.totalRounds = data.totalRounds || 3;
         gameState.currentPhase = data.currentPhase || 'word-entering';
@@ -127,18 +134,17 @@ function initSocket(mode) {
         gameState.currentRole = null;
         gameState.currentWord = null;
         gameState.isWordEnteringPlayer = (gameState.playerId === gameState.wordEnteringPlayerId);
+        gameState.turnsRemaining = data.turnsRemaining || 0;
+        gameState.voteResults = null;
+        gameState.hasVoted = false;
         
         showScreen('game-screen');
         updateGameDisplay();
         
-        // Show word-entering phase
+        // Show word-entering phase by default
+        document.querySelectorAll('#word-entering-phase, #guessing-phase, #waiting-phase, #voting-phase, #reveal-phase').forEach(el => el.classList.add('hidden'));
         const enteringPhase = document.getElementById('word-entering-phase');
-        const guessingPhase = document.getElementById('guessing-phase');
-        const waitingPhase = document.getElementById('waiting-phase');
-        
         if (enteringPhase) enteringPhase.classList.remove('hidden');
-        if (guessingPhase) guessingPhase.classList.add('hidden');
-        if (waitingPhase) waitingPhase.classList.add('hidden');
         
         updateWordEnteringPhase();
     });
@@ -151,20 +157,19 @@ function initSocket(mode) {
 
     gameState.socket.on('word-submitted', (data) => {
         gameState.currentRound = data.roundNumber || gameState.currentRound;
+        gameState.totalRounds = data.totalRounds || gameState.totalRounds;
         gameState.currentPhase = data.currentPhase || 'guessing';
         gameState.currentGuessingPlayerId = data.currentGuessingPlayerId;
         gameState.players = data.players || [];
         gameState.guessingPhaseStarted = true;
         gameState.guessingPlayers = data.guessingPlayers || [];
+        gameState.turnsRemaining = data.turnsRemaining || gameState.turnsRemaining;
         
         // Hide other phases, show guessing phase
-        const enteringPhase = document.getElementById('word-entering-phase');
+        document.querySelectorAll('#word-entering-phase, #guessing-phase, #waiting-phase, #voting-phase, #reveal-phase').forEach(el => el.classList.add('hidden'));
         const guessingPhase = document.getElementById('guessing-phase');
         const waitingPhase = document.getElementById('waiting-phase');
-        
-        if (enteringPhase) enteringPhase.classList.add('hidden');
         if (guessingPhase) guessingPhase.classList.remove('hidden');
-        if (waitingPhase) waitingPhase.classList.add('hidden');
         
         // If this player enters the word, show waiting screen
         if (gameState.isWordEnteringPlayer) {
@@ -179,6 +184,7 @@ function initSocket(mode) {
         gameState.currentPhase = data.currentPhase;
         gameState.currentGuessingPlayerId = data.currentGuessingPlayerId;
         gameState.players = data.players || [];
+        gameState.turnsRemaining = data.turnsRemaining || gameState.turnsRemaining;
         updateGameDisplay();
     });
 
@@ -191,6 +197,25 @@ function initSocket(mode) {
 
     gameState.socket.on('game-over', (data) => {
         showGameOverScreen();
+    });
+
+    gameState.socket.on('voting-started', (data) => {
+        gameState.currentPhase = 'voting';
+        gameState.players = data.players || [];
+        gameState.guessingPlayers = data.guessingPlayers || [];
+        gameState.hasVoted = false;
+        showVotingPhase();
+    });
+
+    gameState.socket.on('vote-results', (data) => {
+        gameState.voteResults = data.voteResults;
+        gameState.players = data.players || [];
+        showRevealPhase();
+    });
+
+    gameState.socket.on('session-ended', (data) => {
+        gameState.currentSession = data.nextSessionNumber;
+        gameState.totalSessions = data.totalSessions;
     });
 
     gameState.socket.on('room-closed', (data) => {
@@ -476,39 +501,114 @@ function updateWordEnteringPhase() {
 
 // Game Display
 function updateGameDisplay() {
+    // update session / round info
+    const sessionEl = document.getElementById('current-session');
+    const totalSessEl = document.getElementById('total-sessions');
+    if (sessionEl) sessionEl.textContent = gameState.currentSession;
+    if (totalSessEl) totalSessEl.textContent = gameState.totalSessions;
+
     document.getElementById('current-round').textContent = gameState.currentRound;
     document.getElementById('total-rounds').textContent = gameState.totalRounds;
-    
-    if (!gameState.guessingPhaseStarted) {
-        updateWordEnteringPhase();
-    } else {
-        // If player is the word-entering player, show waiting screen
-        if (gameState.isWordEnteringPlayer) {
-            // Hide other phases
-            document.getElementById('word-entering-phase').classList.add('hidden');
-            document.getElementById('guessing-phase').classList.add('hidden');
-            const waitingPhase = document.getElementById('waiting-phase');
-            if (waitingPhase) waitingPhase.classList.remove('hidden');
-            
-            // Update waiting game players list
-            const waitingList = document.getElementById('waiting-game-players');
-            if (waitingList) {
-                waitingList.innerHTML = gameState.players.map(player => `
-                    <div class="player-item">
-                        <span class="player-name">${player.name}</span>
-                        <div>
-                            ${player.id === gameState.currentGuessingPlayerId ? '<span class="player-badge turn">🎤 Speaking</span>' : ''}
+
+    // hide banners by default
+    document.getElementById('word-entering-banner').classList.add('hidden');
+    document.getElementById('current-player-banner').classList.add('hidden');
+
+    // choose which phase to render
+    switch (gameState.currentPhase) {
+        case 'word-entering':
+            updateWordEnteringPhase();
+            break;
+        case 'guessing':
+            if (gameState.isWordEnteringPlayer) {
+                // show waiting screen
+                document.getElementById('word-entering-phase').classList.add('hidden');
+                document.getElementById('guessing-phase').classList.add('hidden');
+                const waitingPhase = document.getElementById('waiting-phase');
+                if (waitingPhase) waitingPhase.classList.remove('hidden');
+
+                const waitingList = document.getElementById('waiting-game-players');
+                if (waitingList) {
+                    waitingList.innerHTML = gameState.players.map(player => `
+                        <div class="player-item">
+                            <span class="player-name">${player.name}</span>
+                            <div>
+                                ${player.id === gameState.currentGuessingPlayerId ? '<span class="player-badge turn">🎤 Speaking</span>' : ''}
+                            </div>
                         </div>
-                    </div>
-                `).join('');
+                    `).join('');
+                }
+            } else {
+                updateGuessingPhaseDisplay();
             }
-        } else {
-            // Show guessing phase
-            updateGuessingPhaseDisplay();
-        }
+            break;
+        case 'voting':
+            showVotingPhase();
+            break;
+        case 'reveal':
+            showRevealPhase();
+            break;
+        case 'session-end':
+            // could show a brief message but game-started event will transition
+            break;
+        case 'game-over':
+            showGameOverScreen();
+            break;
+        default:
+            updateWordEnteringPhase();
     }
-    
+
     updateInGamePlayersList();
+}
+
+// helper to render voting screen
+function showVotingPhase() {
+    document.querySelectorAll('#word-entering-phase, #guessing-phase, #waiting-phase, #voting-phase, #reveal-phase').forEach(el => el.classList.add('hidden'));
+    const voting = document.getElementById('voting-phase');
+    if (voting) voting.classList.remove('hidden');
+    updateVotingList();
+}
+
+function updateVotingList() {
+    const listEl = document.getElementById('voting-players-list');
+    if (!listEl) return;
+    // only guessing players can be voted on
+    const eligible = gameState.players.filter(p => p.id !== gameState.wordEnteringPlayerId);
+    listEl.innerHTML = eligible.map(player => `
+        <div class="player-item" data-id="${player.id}">
+            <span class="player-name">${player.name}</span>
+        </div>
+    `).join('');
+
+    // attach click handlers
+    listEl.querySelectorAll('.player-item').forEach(item => {
+        item.addEventListener('click', () => {
+            if (gameState.hasVoted) return;
+            const targetId = item.getAttribute('data-id');
+            gameState.socket.emit('submit-vote', { targetId });
+            gameState.hasVoted = true;
+            item.style.opacity = '0.5';
+        });
+    });
+}
+
+function showRevealPhase() {
+    document.querySelectorAll('#word-entering-phase, #guessing-phase, #waiting-phase, #voting-phase, #reveal-phase').forEach(el => el.classList.add('hidden'));
+    const reveal = document.getElementById('reveal-phase');
+    if (reveal) reveal.classList.remove('hidden');
+    // display results
+    const content = document.getElementById('reveal-content');
+    if (!content || !gameState.voteResults) return;
+    const names = id => gameState.players.find(p=>p.id===id)?.name || 'Unknown';
+    const { winners, actual, counts } = gameState.voteResults;
+    let html = '<p>Votes:</p><ul>';
+    for (const [id, cnt] of Object.entries(counts)) {
+        html += `<li>${names(id)}: ${cnt}</li>`;
+    }
+    html += '</ul>';
+    html += `<p>Imposters were: ${actual.map(names).join(', ')}</p>`;
+    html += `<p>Voted ${winners.map(names).join(', ')}</p>`;
+    content.innerHTML = html;
 }
 
 function updateGuessingPhaseDisplay() {

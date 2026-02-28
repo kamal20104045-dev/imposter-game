@@ -7,16 +7,28 @@ class GameRoom {
     this.ownerId = ownerId;
     this.players = new Map(); // playerId -> { name, role, alive, isWordEnteringPlayer }
     this.gameStarted = false;
-    this.currentRound = 0;
-    this.totalRounds = 3;
 
-    // Current round state
+    // Session tracking (each word-enterer gets one session)
+    this.sessions = [];            // ordered list of playerIds who will enter words
+    this.sessionIndex = 0;         // index into sessions
+    this.currentSession = 0;       // 1-based for UI
+    this.totalSessions = 0;        // will be number of players at start
+
+    // Round tracking within a session
+    this.currentRound = 0;         // 1-based within session
+    this.totalRounds = 3;          // rounds per session (from settings)
+
+    // Current guess/word state
     this.secretWord = '';
     this.wordEnteringPlayerId = null;
-    this.currentPhase = 'lobby'; // 'word-entering' | 'guessing' | 'round-end'
+    this.currentPhase = 'lobby'; // 'word-entering' | 'guessing' | 'voting' | 'reveal' | 'session-end' | 'game-over'
     this.currentGuessingPlayerId = null; // whose turn is it
-    this.guessersThisRound = new Set(); // players who haven't guessed yet
-    this.guessersPassed = new Set(); // players who have passed their turn
+    this.guessersOrder = [];      // ordered list for rotating turns
+    this.turnsRemaining = 0;      // total passes left before voting
+
+    // Voting state
+    this.votes = new Map();       // voterId -> targetId
+    this.voteResults = null;      // computed results after voting
 
     // Settings
     this.settings = {
@@ -73,33 +85,46 @@ class GameRoom {
   startGame() {
     if (this.players.size < 2) return false;
     this.gameStarted = true;
+
+    // prepare session order (rotate randomly to choose starting player)
+    this.sessions = Array.from(this.players.keys());
+    if (this.sessions.length > 1) {
+      const rand = Math.floor(Math.random() * this.sessions.length);
+      // rotate so that rand index becomes first
+      this.sessions = this.sessions.slice(rand).concat(this.sessions.slice(0, rand));
+    }
+    this.totalSessions = this.sessions.length;
+    this.sessionIndex = 0;
+    this.currentSession = 1;
+
+    // rounds per session comes from settings
+    this.totalRounds = this.settings.roundCount || this.totalRounds;
     this.currentRound = 1;
-    this.selectWordEnteringPlayer();
-    this.currentPhase = 'word-entering';
+
+    this.startNextSession();
     return true;
   }
 
-  selectWordEnteringPlayer() {
-    // Select the next player in rotation to enter the word
-    // This ensures everyone gets a turn fairly
-    const playerIds = Array.from(this.players.keys());
-    
-    if (this.currentRound === 1) {
-      // First round: random selection
-      const randomIndex = Math.floor(Math.random() * playerIds.length);
-      this.wordEnteringPlayerId = playerIds[randomIndex];
-    } else {
-      // Subsequent rounds: rotate through players
-      // Find the current word-entering player in the list
-      const currentIndex = playerIds.indexOf(this.wordEnteringPlayerId);
-      const nextIndex = (currentIndex + 1) % playerIds.length;
-      this.wordEnteringPlayerId = playerIds[nextIndex];
+  // start a new session where a particular player will enter the word
+  startNextSession() {
+    if (this.sessionIndex >= this.sessions.length) {
+      // no more sessions left
+      this.currentPhase = 'game-over';
+      this.gameStarted = false;
+      return;
     }
 
-    // Mark this player
-    this.players.forEach(p => p.isWordEnteringPlayer = false);
-    const playerData = this.players.get(this.wordEnteringPlayerId);
-    if (playerData) playerData.isWordEnteringPlayer = true;
+    this.wordEnteringPlayerId = this.sessions[this.sessionIndex];
+    this.players.forEach((p, id) => {
+      p.isWordEnteringPlayer = id === this.wordEnteringPlayerId;
+      p.role = null; // clear previous roles
+    });
+
+    // reset round tracking for this session
+    this.currentRound = 1;
+    this.totalRounds = this.settings.roundCount || this.totalRounds;
+
+    this.currentPhase = 'word-entering';
   }
 
   submitWord(wordEnteringPlayerId, word) {
@@ -109,18 +134,22 @@ class GameRoom {
     // Assign roles to all OTHER players
     this.assignRolesToGuessers();
 
-    // Prepare guessing phase
+    // Build turn order and calculate total passes for this session
     const guessers = Array.from(this.players.keys()).filter(
       id => id !== this.wordEnteringPlayerId
     );
-    this.guessersThisRound = new Set(guessers);
-    this.guessersPassed = new Set();
+    this.guessersOrder = guessers;
+    this.turnsRemaining = guessers.length * (this.settings.roundCount || this.totalRounds);
 
-    // Start guessing with first guesser
+    // start with first guesser
     if (guessers.length > 0) {
       this.currentGuessingPlayerId = guessers[0];
       this.currentPhase = 'guessing';
     }
+
+    // clear any previous voting state
+    this.votes.clear();
+    this.voteResults = null;
 
     return true;
   }
@@ -152,38 +181,65 @@ class GameRoom {
   }
 
   passCurrentGuesser() {
-    // Mark current guesser as passed
-    if (this.currentGuessingPlayerId) {
-      this.guessersPassed.add(this.currentGuessingPlayerId);
+    // reduce remaining turns and rotate to next guesser
+    if (this.currentGuessingPlayerId && this.guessersOrder.length > 0) {
+      this.turnsRemaining -= 1;
+      const currentIndex = this.guessersOrder.indexOf(this.currentGuessingPlayerId);
+      const nextIndex = (currentIndex + 1) % this.guessersOrder.length;
+      this.currentGuessingPlayerId = this.guessersOrder[nextIndex];
     }
 
-    // Check if all have passed
-    if (this.guessersPassed.size === this.guessersThisRound.size) {
-      this.endRound();
-      return;
+    // check if we've finished all rounds for this session
+    if (this.turnsRemaining <= 0) {
+      this.startVoting();
     }
-
-    // Move to next guesser
-    const guessers = Array.from(this.guessersThisRound);
-    const currentIndex = guessers.indexOf(this.currentGuessingPlayerId);
-    const nextIndex = (currentIndex + 1) % guessers.length;
-    this.currentGuessingPlayerId = guessers[nextIndex];
   }
 
-  endRound() {
-    this.currentPhase = 'round-end';
+  startVoting() {
+    this.currentPhase = 'voting';
+    this.votes.clear();
+  }
+
+  submitVote(voterId, targetId) {
+    if (this.currentPhase !== 'voting') return;
+    if (!this.guessersOrder.includes(voterId)) return; // only guessers vote
+    this.votes.set(voterId, targetId);
+
+    // if everyone has voted, compute results
+    if (this.votes.size === this.guessersOrder.length) {
+      const counts = {};
+      for (const vote of this.votes.values()) {
+        counts[vote] = (counts[vote] || 0) + 1;
+      }
+      // determine winner(s)
+      let max = 0;
+      Object.values(counts).forEach(c => { if (c > max) max = c; });
+      const winners = Object.keys(counts).filter(id => counts[id] === max);
+
+      // actual imposters
+      const actual = Array.from(this.players.entries())
+        .filter(([id,p]) => p.role === 'imposter')
+        .map(([id]) => id);
+
+      this.voteResults = { counts, winners, actual };
+      this.currentPhase = 'reveal';
+    }
+  }
+
+  endSession() {
+    // clear round-specific state
     this.secretWord = '';
     this.currentGuessingPlayerId = null;
+    this.guessersOrder = [];
+    this.turnsRemaining = 0;
+    this.votes.clear();
 
-    if (this.currentRound < this.totalRounds) {
-      // Prepare next round
-      this.currentRound++;
-      this.selectWordEnteringPlayer();
-      this.guessersThisRound = new Set();
-      this.guessersPassed = new Set();
-      this.currentPhase = 'word-entering';
+    // move to next session
+    this.sessionIndex++;
+    this.currentSession++;
+    if (this.sessionIndex < this.sessions.length) {
+      this.startNextSession();
     } else {
-      // Game over
       this.currentPhase = 'game-over';
       this.gameStarted = false;
     }
@@ -191,13 +247,20 @@ class GameRoom {
 
   resetGame() {
     this.gameStarted = false;
+    this.sessions = [];
+    this.sessionIndex = 0;
+    this.currentSession = 0;
+    this.totalSessions = 0;
     this.currentRound = 0;
+    this.totalRounds = this.settings.roundCount || 0;
     this.currentPhase = 'lobby';
     this.secretWord = '';
     this.wordEnteringPlayerId = null;
     this.currentGuessingPlayerId = null;
-    this.guessersThisRound = new Set();
-    this.guessersPassed = new Set();
+    this.guessersOrder = [];
+    this.turnsRemaining = 0;
+    this.votes.clear();
+    this.voteResults = null;
 
     this.players.forEach(p => {
       p.role = null;
@@ -215,6 +278,8 @@ class GameRoom {
   getGameState() {
     return {
       gameStarted: this.gameStarted,
+      currentSession: this.currentSession,
+      totalSessions: this.totalSessions,
       currentRound: this.currentRound,
       totalRounds: this.totalRounds,
       currentPhase: this.currentPhase,
@@ -222,8 +287,9 @@ class GameRoom {
       currentGuessingPlayerId: this.currentGuessingPlayerId,
       players: this.getPlayers(),
       secretWord: this.secretWord,
-      guessersThisRound: Array.from(this.guessersThisRound),
-      guessersPassed: Array.from(this.guessersPassed)
+      turnsRemaining: this.turnsRemaining,
+      votes: Array.from(this.votes.entries()),
+      voteResults: this.voteResults
     };
   }
 }
