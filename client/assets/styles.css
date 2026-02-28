@@ -655,34 +655,62 @@ button, input[type="text"], input[type="number"] {
 
 /* Forms */
 .form-group {
-    margin-bottom: 15px;
+    margin-bottom: 20px;
 }
 
 .input {
     width: 100%;
-    padding: 12px;
+    padding: 14px 16px;
     border: 2px solid #e0e0e0;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 16px;
-    transition: border-color 0.2s;
+    font-family: inherit;
+    transition: all 0.2s;
 }
 
 .input:focus {
     outline: none;
     border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+#word-entering-self {
+    text-align: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%);
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+#word-entering-self h3 {
+    font-size: 24px;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+#word-entering-self p {
+    font-size: 15px;
+    color: #666;
+    margin-bottom: 30px;
+    line-height: 1.5;
+}
+
+#word-input {
+    font-size: 18px;
+    text-align: center;
+    letter-spacing: 1px;
 }
 
 /* Buttons */
 .btn {
     width: 100%;
-    padding: 12px;
+    padding: 14px 16px;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -693,12 +721,16 @@ button, input[type="text"], input[type="number"] {
 }
 
 .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
 .btn-primary:active {
-    transform: translateY(0);
+    transform: translateY(-1px);
+}
+
+#submit-word-btn {
+    margin-top: 20px;
 }
 
 .btn-secondary {
@@ -709,12 +741,14 @@ button, input[type="text"], input[type="number"] {
 
 .btn-secondary:hover {
     background: #e0e0e0;
+    transform: translateY(-2px);
 }
 
 .btn-small {
-    padding: 6px 12px;
-    font-size: 14px;
+    padding: 8px 14px;
+    font-size: 13px;
     width: auto;
+    font-weight: 600;
 }
 
 .btn-danger {
@@ -881,13 +915,22 @@ button, input[type="text"], input[type="number"] {
     font-size: 14px;
 }
 
+/* Hidden class for universal use */
+.hidden {
+    display: none !important;
+}
+
 /* Game Screen */
 .phase {
-    display: none;
+    display: block;
 }
 
 .phase.active {
     display: block;
+}
+
+.phase.hidden {
+    display: none !important;
 }
 
 .phase h3 {
@@ -898,6 +941,14 @@ button, input[type="text"], input[type="number"] {
 .phase p {
     color: #666;
     margin-bottom: 15px;
+}
+
+#word-entering-self.hidden {
+    display: none;
+}
+
+#word-entering-waiting.hidden {
+    display: none;
 }
 
 .timer {

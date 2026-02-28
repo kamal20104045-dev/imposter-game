@@ -60,7 +60,6 @@ function initSocket(mode) {
     gameState.socket = io(socketUrl);
     
     gameState.socket.on('connect', () => {
-        console.log(`Connected to server (${mode} mode)`, socketUrl);
         gameState.playerId = gameState.socket.id;
     });
 
@@ -70,7 +69,6 @@ function initSocket(mode) {
             gameState.currentRole = data.role; // 'imposter', 'normal', or null
             gameState.currentWord = data.word || null;
             gameState.isWordEnteringPlayer = data.isWordEnteringPlayer || false;
-            console.log(`Role: ${gameState.currentRole}, IsWordEntering: ${gameState.isWordEnteringPlayer}`);
             displayRoleCard();
             displayWordCard();
         }
@@ -148,7 +146,6 @@ function initSocket(mode) {
     gameState.socket.on('role-assigned', (data) => {
         gameState.currentRole = data.role;
         gameState.currentWord = data.word || null;
-        console.log(`Role assigned: ${data.role}, Word: ${data.word ? 'received' : 'not shown'}`);
         displayRoleCard();
     });
 
@@ -218,9 +215,7 @@ function initSocket(mode) {
         showError('❌ ' + data.message);
     });
 
-    gameState.socket.on('disconnect', () => {
-        console.log('Disconnected from server');
-    });
+    gameState.socket.on('disconnect', () => {});
 }
 
 // Screen Management
@@ -639,38 +634,7 @@ document.getElementById('return-to-lobby-btn').addEventListener('click', () => {
     location.reload();
 });
 
-// How to Play Modal
-function setupHowToPlayModal() {
-    const modal = document.getElementById('how-to-play-modal');
-    const btn = document.getElementById('how-to-play-btn');
-    const closeBtn = document.querySelector('#how-to-play-modal .modal-close');
-    if (!modal) return;
 
-    if (btn) {
-        btn.addEventListener('click', () => {
-            modal.classList.remove('hidden');
-        });
-    }
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            modal.classList.add('hidden');
-        });
-    }
-}
-
-function closeHowToPlay() {
-    const modal = document.getElementById('how-to-play-modal');
-    if (modal) modal.classList.add('hidden');
-}
-
-// Close modal when clicking outside
-window.addEventListener('click', (e) => {
-    const modal = document.getElementById('how-to-play-modal');
-    if (e.target === modal) {
-        modal.classList.add('hidden');
-    }
-});
 
 // Warn before leaving or reloading during an active game
 window.addEventListener('beforeunload', (e) => {
@@ -679,20 +643,6 @@ window.addEventListener('beforeunload', (e) => {
         e.returnValue = 'You are in a game. Are you sure you want to leave?';
     }
 });
-
-// Display Your Role
-function displayYourRole() {
-    // Role will be sent from server in a future update
-    // For now, show placeholder
-    const roleDisplay = document.getElementById('role-badge');
-    if (gameState.currentRole === 'imposter') {
-        roleDisplay.textContent = '🕵️ You are the Imposter';
-        roleDisplay.classList.add('imposter');
-    } else if (gameState.currentRole === 'normal') {
-        roleDisplay.textContent = '👤 You are a Normal Player';
-        roleDisplay.classList.add('normal');
-    }
-}
 
 // Reset local UI/game state
 function resetLocalGameState() {
