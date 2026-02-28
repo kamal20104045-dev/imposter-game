@@ -217,6 +217,29 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for:
 - Updating server URL for online mode
 - Testing and troubleshooting
 
+> **Low-memory note:** free tiers often limit your process to 512 MB. The server start command includes `--max-old-space-size=256` to keep Node within that budget; if you use a different host, adjust this flag or the environment variable `NODE_OPTIONS` accordingly.
+
+
+### Alternative hosting (if GitHub Pages isn’t working)
+
+The client is just a folder of static files, so you don’t have to rely on GitHub Pages at all. If the automatic `gh-pages` deployment fails or Pages refuses to publish, you can:
+
+1. **Let the backend serve the UI** – the server already uses `express.static` to serve `client/` when running. Deploy the server (Render, Railway, etc.) and visit the service URL; the landing page will load directly, and online mode will connect to the same origin.
+2. **Manually publish `gh-pages`**:
+   ```bash
+   cd client
+   git init
+   git checkout -b gh-pages
+   git add .
+   git commit -m "Publish client"
+   git push -f https://github.com/kamal20104045-dev/imposter-game.git gh-pages
+   ```
+   then select `gh-pages / (root)` in **Settings → Pages**.
+3. **Use another static host** (Netlify, Vercel, Cloudflare Pages, S3, Surge, etc.) – just point the service at your repo or upload the contents of `client/`.
+
+Once the frontend is live on any HTTPS origin, update `window.BACKEND_URL` in `client/index.html` and (optionally) set `FRONTEND_ORIGIN` on the backend service.
+
+
 ## Troubleshooting
 
 ### "npm: command not found"

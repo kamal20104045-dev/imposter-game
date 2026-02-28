@@ -36,9 +36,13 @@ class GameRoom {
   }
 
   addPlayer(playerId, playerName) {
+    // when a player joins while a game is already in progress we
+    // immediately mark them as a normal player so they are not
+    // accidentally treated as an imposter mid–round.  Their role
+    // will be re‑shuffled when the next round starts anyway.
     this.players.set(playerId, {
       name: playerName,
-      role: null,
+      role: this.gameStarted ? 'normal' : null,
       alive: true
     });
   }

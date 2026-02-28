@@ -12,6 +12,7 @@ body {
     justify-content: center;
     align-items: center;
     padding: 10px;
+}
 /* Responsive adjustments for small devices */
 @media (max-width: 600px) {
     .container {
@@ -72,7 +73,7 @@ button, input[type="text"], input[type="number"] {
         box-shadow: 0 4px 20px rgba(0,0,0,0.12);
     }
 }
-}
+
 
 .container {
     width: 100%;
@@ -222,6 +223,11 @@ button, input[type="text"], input[type="number"] {
     display: none;
 }
 
+/* Utility hidden helper (used across markup) */
+.hidden {
+    display: none !important;
+}
+
 .modal-content {
     background: white;
     border-radius: 15px;
@@ -345,6 +351,17 @@ button, input[type="text"], input[type="number"] {
     font-size: 16px;
     font-weight: 600;
     color: white;
+}
+
+/* central word display (inside game area) */
+.now-word-display {
+    margin: 10px 0;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 6px;
+    font-size: 14px;
+    text-align: center;
+    color: #fff;
 }
 
 .btn-copy {

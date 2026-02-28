@@ -208,7 +208,12 @@ function showScreen(screenName) {
     document.querySelectorAll('.screen').forEach(screen => {
         screen.classList.remove('active');
     });
-    document.getElementById(screenName).classList.add('active');
+    const target = document.getElementById(screenName);
+    if (!target) {
+        console.error('showScreen: target not found', screenName);
+        return;
+    }
+    target.classList.add('active');
 }
 
 // Back to Landing
@@ -654,15 +659,25 @@ document.getElementById('return-to-lobby-btn').addEventListener('click', () => {
 function setupHowToPlayModal() {
     const modal = document.getElementById('how-to-play-modal');
     const btn = document.getElementById('how-to-play-btn');
-    
-    btn.addEventListener('click', () => {
-        modal.classList.remove('hidden');
-    });
+    const closeBtn = document.querySelector('#how-to-play-modal .modal-close');
+    if (!modal) return;
+
+    if (btn) {
+        btn.addEventListener('click', () => {
+            modal.classList.remove('hidden');
+        });
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+    }
 }
 
 function closeHowToPlay() {
     const modal = document.getElementById('how-to-play-modal');
-    modal.classList.add('hidden');
+    if (modal) modal.classList.add('hidden');
 }
 
 // Close modal when clicking outside
