@@ -216,6 +216,13 @@ function initSocket(mode) {
         showRevealPhase();
     });
 
+    gameState.socket.on('all-players-ready', (data) => {
+        // All players have clicked ready, transition to next session
+        gameState.currentSession = data.nextSessionNumber;
+        gameState.totalSessions = data.totalSessions;
+        // Server will emit game-started for next session automatically
+    });
+
     gameState.socket.on('session-ended', (data) => {
         gameState.currentSession = data.nextSessionNumber;
         gameState.totalSessions = data.totalSessions;
@@ -656,28 +663,25 @@ function showRevealPhase() {
     html += '</div>';
     content.innerHTML = html;
     
-    // Start countdown timer for next session
-    startNextSessionCountdown();
+    // Setup ready button handler
+    setupReadyButton();
 }
 
-function startNextSessionCountdown() {
-    const countdownEl = document.getElementById('countdown');
-    if (!countdownEl) return;
+function setupReadyButton() {
+    const readyBtn = document.getElementById('ready-btn');
+    const readyStatus = document.getElementById('ready-status');
     
-    let secondsLeft = 3;
-    countdownEl.textContent = 'Starting next session in ' + secondsLeft + ' seconds...';
-    countdownEl.classList.remove('hidden');
-    
-    const timer = setInterval(() => {
-        secondsLeft--;
-        if (secondsLeft > 0) {
-            countdownEl.textContent = 'Starting next session in ' + secondsLeft + ' seconds...';
-        } else {
-            clearInterval(timer);
-            countdownEl.classList.add('hidden');
-            // Server automatically transitions after 3 seconds
-        }
-    }, 1000);
+    if (readyBtn) {
+        readyBtn.disabled = false;
+        readyBtn.textContent = '✓ Ready for Next Session';
+        readyBtn.addEventListener('click', () => {
+            readyBtn.disabled = true;
+            readyBtn.textContent = '✓ Ready';
+            readyStatus.style.display = 'block';
+            gameState.socket.emit('player-ready');
+        }, { once: true });
+    }
+}
 }
 
 function updateGuessingPhaseDisplay() {

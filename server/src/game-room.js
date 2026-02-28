@@ -29,6 +29,7 @@ class GameRoom {
     // Voting state
     this.votes = new Map();       // voterId -> targetId
     this.voteResults = null;      // computed results after voting
+    this.readyPlayers = new Set(); // players who clicked ready in reveal phase
 
     // Settings
     this.settings = {
@@ -226,6 +227,16 @@ class GameRoom {
     }
   }
 
+  markPlayerReady(playerId) {
+    if (this.players.has(playerId)) {
+      this.readyPlayers.add(playerId);
+    }
+  }
+
+  areAllPlayersReady() {
+    return this.readyPlayers.size === this.players.size;
+  }
+
   endSession() {
     // clear round-specific state
     this.secretWord = '';
@@ -233,6 +244,7 @@ class GameRoom {
     this.guessersOrder = [];
     this.turnsRemaining = 0;
     this.votes.clear();
+    this.readyPlayers.clear(); // reset for next session
 
     // move to next session
     this.sessionIndex++;

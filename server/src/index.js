@@ -197,42 +197,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // if we just finished voting and are in reveal
-    if (room.currentPhase === 'reveal') {
-      io.to(room.id).emit('vote-results', {
-        voteResults: room.voteResults,
-        players: room.getPlayers()
-      });
-
-      // after a short delay, move to next session or end game
-      setTimeout(() => {
-        if (room.gameStarted && room.currentPhase === 'reveal') {
-          // move into end-of-session logic
-          room.endSession();
-          if (room.currentPhase === 'game-over') {
-            io.to(room.id).emit('game-over', {});
-          } else {
-            // notify clients of new session start
-            io.to(room.id).emit('session-ended', {
-              nextSessionNumber: room.currentSession,
-              totalSessions: room.totalSessions
-            });
-            io.to(room.id).emit('game-started', {
-              sessionNumber: room.currentSession,
-              totalSessions: room.totalSessions,
-              roundNumber: room.currentRound,
-              totalRounds: room.totalRounds,
-              currentPhase: room.currentPhase,
-              wordEnteringPlayerId: room.wordEnteringPlayerId,
-              players: room.getPlayers()
-            });
-          }
-        }
-      }, 3000);
-
-      return;
-    }
-
     // still in guessing phase normally
     io.to(room.id).emit('turn-updated', {
       currentPhase: room.currentPhase,
@@ -257,30 +221,42 @@ io.on('connection', (socket) => {
         voteResults: room.voteResults,
         players: room.getPlayers()
       });
+      // Wait for players to click Ready button
+    }
+  });
 
-      // same post-reveal transition as in pass-turn
-      setTimeout(() => {
-        if (room.gameStarted && room.currentPhase === 'reveal') {
-          room.endSession();
-          if (room.currentPhase === 'game-over') {
-            io.to(room.id).emit('game-over', {});
-          } else {
-            io.to(room.id).emit('session-ended', {
-              nextSessionNumber: room.currentSession,
-              totalSessions: room.totalSessions
-            });
-            io.to(room.id).emit('game-started', {
-              sessionNumber: room.currentSession,
-              totalSessions: room.totalSessions,
-              roundNumber: room.currentRound,
-              totalRounds: room.totalRounds,
-              currentPhase: room.currentPhase,
-              wordEnteringPlayerId: room.wordEnteringPlayerId,
-              players: room.getPlayers()
-            });
-          }
-        }
-      }, 3000);
+  // Handle player ready in reveal phase
+  socket.on('player-ready', () => {
+    const room = gameManager.getRoomByPlayerId(socket.id);
+    if (!room || !room.gameStarted) return;
+    if (room.currentPhase !== 'reveal') return;
+
+    room.markPlayerReady(socket.id);
+
+    // Check if all players are ready
+    if (room.areAllPlayersReady()) {
+      room.endSession();
+      if (room.currentPhase === 'game-over') {
+        io.to(room.id).emit('game-over', {});
+      } else {
+        // Move to next session
+        io.to(room.id).emit('all-players-ready', {
+          nextSessionNumber: room.currentSession,
+          totalSessions: room.totalSessions
+        });
+        // Small delay before starting next game
+        setTimeout(() => {
+          io.to(room.id).emit('game-started', {
+            sessionNumber: room.currentSession,
+            totalSessions: room.totalSessions,
+            roundNumber: room.currentRound,
+            totalRounds: room.totalRounds,
+            currentPhase: room.currentPhase,
+            wordEnteringPlayerId: room.wordEnteringPlayerId,
+            players: room.getPlayers()
+          });
+        }, 500);
+      }
     }
   });
 
